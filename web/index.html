@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <!-- Hecho por Briann$ Workers Corp. -->
+  <!-- Reemplazado por --base-href al compilar. Debe empezar y terminar en "/". -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Workers Recepción: asistencia, clientes, pagos, tienda y caja.">
+  <meta name="theme-color" content="#FBF9F4">
+
+  <!-- Instalable en iPhone / iPad -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Workers Gym">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="manifest" href="manifest.json">
+  <title>Workers Gym · Recepción</title>
+
+  <!-- Pantalla de carga con la marca mientras arranca Flutter. Usa la misma
+       fuente que la app (ya empaquetada como asset). -->
+  <style>
+    @font-face {
+      font-family: 'BigShoulders';
+      src: url('assets/assets/fonts/BigShoulders-800.ttf') format('truetype');
+      font-weight: 800;
+      font-display: swap;
+    }
+    html, body { margin: 0; height: 100%; background: #F2EEE5; }
+    #splash {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+      background: #F2EEE5;
+      background-image: radial-gradient(#D8CFBE 0.9px, transparent 1px);
+      background-size: 24px 24px;
+      transition: opacity .4s ease;
+    }
+    #splash.done { opacity: 0; pointer-events: none; }
+    #splash svg { width: 84px; height: 84px; animation: spin 2.4s cubic-bezier(.6,.1,.4,.9) infinite; }
+    #splash h1 {
+      margin: 0; font: 800 46px/1 'BigShoulders', 'Arial Narrow', sans-serif;
+      letter-spacing: .5px; color: #17140F;
+    }
+    #splash .rule { width: 220px; border-top: 3px solid #17140F; border-bottom: 1px solid #17140F; height: 2px; }
+    #splash p {
+      margin: 0; font: 500 11px/1 ui-monospace, 'Cascadia Mono', Menlo, monospace;
+      letter-spacing: 1.6px; color: #5E574C;
+    }
+    @keyframes spin { 50% { transform: rotate(180deg); } 100% { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { #splash svg { animation: none; } }
+    /* Modo oscuro: pizarra y tiza (misma paleta que la app). */
+    html.dark, html.dark body, html.dark #splash { background-color: #15130F; }
+    html.dark #splash { background-image: radial-gradient(#39332A 0.9px, transparent 1px); }
+    html.dark #splash h1 { color: #F0EBE0; }
+    html.dark #splash .rule { border-color: #F0EBE0; }
+    html.dark #splash p { color: #A89E8D; }
+    html.dark #splash .hole { fill: #15130F; }
+  </style>
+  <script src="theme.js"></script>
+</head>
+<body>
+  <div id="splash" role="status" aria-label="Cargando">
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <circle cx="50" cy="50" r="48" fill="#2348B0"/>
+      <circle cx="50" cy="50" r="41.3" fill="none" stroke="#19347F" stroke-width="2.4"/>
+      <circle cx="50" cy="50" r="29.8" fill="none" stroke="#19347F" stroke-width="5.3"
+              stroke-linecap="round" stroke-dasharray="22.6 39.8" transform="rotate(-111.8 50 50)"/>
+      <circle cx="50" cy="50" r="14.4" fill="#19347F"/>
+      <circle class="hole" cx="50" cy="50" r="8.2" fill="#F2EEE5"/>
+    </svg>
+    <h1>WORKERS GYM</h1>
+    <div class="rule"></div>
+    <p>WORKERS RECEPCIÓN</p>
+  </div>
+  <noscript>Esta aplicación necesita JavaScript.</noscript>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

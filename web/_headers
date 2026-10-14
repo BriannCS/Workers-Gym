@@ -1,0 +1,22 @@
+# Hecho por Briann$ Workers Corp.
+# Encabezados de seguridad para Netlify (este archivo se copia a build/web).
+# La CSP solo permite código propio (compilar con --no-web-resources-cdn para
+# que CanvasKit no venga de gstatic) y conexiones a Supabase, a la API de tasas
+# y a las fuentes de respaldo de Google. 'unsafe-inline' en estilos lo exige
+# Flutter (inyecta estilos en tiempo de ejecución); en scripts no hace falta.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://oppbuyitotxnmftbvzyw.supabase.co; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://oppbuyitotxnmftbvzyw.supabase.co wss://oppbuyitotxnmftbvzyw.supabase.co https://ve.dolarapi.com https://fonts.gstatic.com; worker-src 'self' blob:; frame-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Cross-Origin-Opener-Policy: same-origin
+
+# Siempre la versión nueva de la app y del service worker.
+/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+/flutter_bootstrap.js
+  Cache-Control: no-cache

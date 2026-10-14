@@ -1,0 +1,27 @@
+{
+  "id": "./",
+  "name": "Workers Gym · Recepción",
+  "short_name": "Workers Gym",
+  "description": "Workers Recepción: asistencia, clientes, pagos, tienda y caja, sincronizada entre la PC y el teléfono.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F2EEE5",
+  "theme_color": "#FBF9F4",
+  "categories": ["business", "health", "fitness", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "icons/Icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/Icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/Icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/Icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Registrar entrada", "short_name": "Entrada", "url": "./#/asistencia", "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }] },
+    { "name": "Tienda", "url": "./#/tienda", "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }] },
+    { "name": "Cierre de caja", "short_name": "Caja", "url": "./#/caja", "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }] }
+  ]
+}
