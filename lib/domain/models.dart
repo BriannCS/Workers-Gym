@@ -13,9 +13,12 @@ DateTime dateOnly(DateTime d) => DateTime.utc(d.year, d.month, d.day);
 
 enum MembershipStatus {
   active('Al día'),
-  expiringSoon('Por vencer'),
+  expiringSoon('Po1r vencer'),
   expired('Vencido'),
-  none('Sin plan');
+  none('Sin plan'),
+  /// Marcado a mano por recepción (dejó de venir). No cuenta en los avisos de
+  /// vencimiento; si vuelve a pagar se reactiva solo.
+  inactive('Inactivo');
 
   const MembershipStatus(this.label);
   final String label;
@@ -231,6 +234,7 @@ class Member {
     this.expiresOn,
     this.planName,
     this.photoPath,
+    this.active = true,
   });
 
   final String id;
@@ -243,8 +247,9 @@ class Member {
   final DateTime? expiresOn;
   final String? planName;
   final String? photoPath;
+  final bool active;
 
-  MembershipStatus status(DateTime today) => membershipStatus(expiresOn, today);
+  MembershipStatus status(DateTime today) => active ? membershipStatus(expiresOn, today) : MembershipStatus.inactive;
 
   String get initials {
     final parts = fullName.trim().split(RegExp(r'\s+'));
@@ -280,9 +285,10 @@ class Member {
         expiresOn: _date(j['expires_on']),
         planName: j['plan_name'] as String?,
         photoPath: j['photo_path'] as String?,
+        active: j['active'] as bool? ?? true,
       );
 
-  Member copyWith({DateTime? expiresOn, String? planName, MemberInput? input, String? Function()? photoPath}) => Member(
+  Member copyWith({DateTime? expiresOn, String? planName, MemberInput? input, String? Function()? photoPath, bool? active}) => Member(
         id: id,
         createdAt: createdAt,
         fullName: input?.fullName ?? fullName,
@@ -293,6 +299,7 @@ class Member {
         expiresOn: expiresOn ?? this.expiresOn,
         planName: planName ?? this.planName,
         photoPath: photoPath != null ? photoPath() : this.photoPath,
+        active: active ?? this.active,
       );
 }
 

@@ -1,6 +1,8 @@
 // Hecho por Briann$ Workers Corp.
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gimnasio_app/core/theme/app_theme.dart';
+import 'package:gimnasio_app/features/auth/login_screen.dart';
 import 'package:gimnasio_app/core/widgets/ui.dart';
 import 'package:gimnasio_app/data/demo_gym_repository.dart';
 import 'package:gimnasio_app/domain/models.dart';
@@ -78,6 +80,64 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Nuevo cliente'));
     await tester.pumpAndSettle();
     expect(tester.getSize(find.byType(FormDialog)).width, phoneSize.width);
+  });
+
+  testWidgets('en teléfono, mantener presionado un cliente permite desactivarlo y eliminarlo', (tester) async {
+    useDesktopWindow(tester, size: phoneSize);
+    final repo = DemoGymRepository.seeded(clock: () => testNow);
+    await tester.pumpWidget(buildTestApp(repo: repo));
+    await tester.pumpAndSettle();
+    await goTo(tester, 'Clientes');
+
+    final luis = find.text('Luis Alberto Méndez');
+    await tester.ensureVisible(luis);
+    await tester.pumpAndSettle();
+    await tester.longPress(luis);
+    await tester.pumpAndSettle();
+    expect(find.text('Editar datos'), findsOneWidget);
+    expect(find.text('Eliminar cliente'), findsOneWidget);
+
+    await tester.tap(find.text('Marcar como inactivo'));
+    await tester.pumpAndSettle();
+    expect((await repo.members()).firstWhere((m) => m.fullName.startsWith('Luis')).active, isFalse);
+
+    await tester.ensureVisible(luis);
+    await tester.pumpAndSettle();
+    await tester.longPress(luis);
+    await tester.pumpAndSettle();
+    expect(find.text('Marcar como activo'), findsOneWidget);
+    await tester.tap(find.text('Eliminar cliente'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Eliminar'));
+    await tester.pumpAndSettle();
+
+    expect((await repo.members()).any((m) => m.fullName.startsWith('Luis')), isFalse);
+    expect(find.text('Luis Alberto Méndez'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  // El ancho real de los botones en 360 px se revisa con fuentes reales en
+  // screenshots_test.dart ("capturas teléfono angosto"): la fuente de prueba
+  // de Flutter es más ancha y daría desbordes falsos.
+  testWidgets('la ficha del cliente en teléfono usa botones cortos y opciones arriba', (tester) async {
+    useDesktopWindow(tester, size: phoneSize);
+    await tester.pumpWidget(buildTestApp());
+    await tester.pumpAndSettle();
+    await goTo(tester, 'Clientes');
+    await tester.ensureVisible(find.text('Luis Alberto Méndez'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Luis Alberto Méndez'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(OutlinedButton, 'Entrada'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Cobrar'), findsOneWidget);
+    expect(find.byTooltip('Más opciones'), findsWidgets);
+  });
+
+  testWidgets('el inicio de sesión lleva la firma', (tester) async {
+    useDesktopWindow(tester, size: phoneSize);
+    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: LoginScreen())));
+    await tester.pumpAndSettle();
+    expect(find.text(r'Hecho por Briann$'), findsOneWidget);
   });
 
   testWidgets('check-in con Enter registra al primer resultado', (tester) async {

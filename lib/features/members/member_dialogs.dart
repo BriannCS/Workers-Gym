@@ -14,6 +14,7 @@ import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
 import '../attendance/check_in.dart';
 import '../payments/payment_dialog.dart';
+import 'member_actions.dart';
 
 Future<void> showMemberForm(BuildContext context, {Member? member}) =>
     showDialog(context: context, builder: (_) => _MemberForm(member: member));
@@ -44,6 +45,7 @@ class _MemberFormState extends ConsumerState<_MemberForm> {
   Uint8List? _newPhoto;
   String _newPhotoType = 'image/jpeg';
   bool _removePhoto = false;
+  late bool _active = widget.member?.active ?? true;
   bool _busy = false;
 
   @override
@@ -55,6 +57,11 @@ class _MemberFormState extends ConsumerState<_MemberForm> {
   }
 
   String? _opt(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
+
+  static final _compact = OutlinedButton.styleFrom(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    visualDensity: VisualDensity.compact,
+  );
 
   /// Cámara (en el teléfono abre la cámara directamente) o galería. Se reduce
   /// a 600 px para que suba rápido y no ocupe espacio de más.
@@ -98,6 +105,7 @@ class _MemberFormState extends ConsumerState<_MemberForm> {
         saved = await repo.createMember(input);
       } else {
         await repo.updateMember(existing.id, input);
+        if (_active != existing.active) await repo.setMemberActive(existing.id, _active);
         saved = existing;
       }
       if (_newPhoto != null) {
@@ -191,11 +199,13 @@ class _MemberFormState extends ConsumerState<_MemberForm> {
                     runSpacing: 8,
                     children: [
                       OutlinedButton.icon(
+                        style: _compact,
                         onPressed: () => _pick(ImageSource.camera),
                         icon: const Icon(Icons.photo_camera_outlined, size: 18),
-                        label: const Text('Tomar foto'),
+                        label: const Text('Cámara'),
                       ),
                       OutlinedButton.icon(
+                        style: _compact,
                         onPressed: () => _pick(ImageSource.gallery),
                         icon: const Icon(Icons.image_outlined, size: 18),
                         label: const Text('Galería'),
@@ -238,6 +248,17 @@ class _MemberFormState extends ConsumerState<_MemberForm> {
               decoration: const InputDecoration(labelText: 'Notas', hintText: 'Lesiones, objetivos, observaciones…'),
               maxLines: 3,
             ),
+            if (editing)
+              SwitchListTile(
+                value: _active,
+                onChanged: (v) => setState(() => _active = v),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Cliente activo', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  _active ? 'Aparece en avisos de vencimiento' : 'Inactivo: no cuenta en vencidos ni por vencer',
+                  style: AppText.muted.copyWith(fontSize: 12.5),
+                ),
+              ),
           ],
         ),
       ),
@@ -253,31 +274,48 @@ class _MemberDetail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Se busca por id para reflejar cambios (pagos, ediciones) sin cerrar el diálogo.
-    final member = ref.watch(membersProvider).value?.where((m) => m.id == memberId).firstOrNull;
-    if (member == null) return const SizedBox.shrink();
+    final members = ref.watch(membersProvider).value;
+    final member = members?.where((m) => m.id == memberId).firstOrNull;
+    if (member == null) {
+      // Lo eliminaron (aquí o en otro dispositivo): se cierra la ficha.
+      if (members != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) Navigator.maybePop(context);
+        });
+      }
+      return const SizedBox.shrink();
+    }
     final today = ref.watch(clockProvider)();
     final status = member.status(today);
     final payments = ref.watch(memberPaymentsProvider(member.id));
+    final phone = context.isPhone;
 
     return FormDialog(
       title: member.fullName,
       subtitle: 'Cliente desde ${formatDate(member.createdAt)}',
       width: 640,
-      actions: [
-        OutlinedButton.icon(
+      headerActions: [
+        IconButton(
+          tooltip: 'Editar',
           onPressed: () => showMemberForm(context, member: member),
-          icon: const Icon(Icons.edit_outlined, size: 18),
-          label: const Text('Editar'),
+          icon: const Icon(Icons.edit_outlined),
         ),
+        IconButton(
+          tooltip: 'Más opciones',
+          onPressed: () => showMemberActions(context, member),
+          icon: const Icon(Icons.more_vert),
+        ),
+      ],
+      actions: [
         OutlinedButton.icon(
           onPressed: () => checkInMember(context, ref, member),
           icon: const Icon(Icons.login, size: 18),
-          label: const Text('Registrar entrada'),
+          label: Text(phone ? 'Entrada' : 'Registrar entrada'),
         ),
         FilledButton.icon(
           onPressed: () => showPaymentDialog(context, member: member),
           icon: const Icon(Icons.payments_outlined, size: 18),
-          label: const Text('Registrar pago'),
+          label: Text(phone ? 'Cobrar' : 'Registrar pago'),
         ),
       ],
       child: Column(

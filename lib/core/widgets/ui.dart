@@ -604,13 +604,24 @@ void showToast(BuildContext context, String message, {bool error = false}) {
 /// Estructura común de los formularios. En escritorio es un diálogo con marco
 /// de tinta; en teléfono ocupa toda la pantalla con los botones abajo.
 class FormDialog extends StatelessWidget {
-  const FormDialog({super.key, required this.title, this.subtitle, required this.child, required this.actions, this.width = 520});
+  const FormDialog({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.child,
+    required this.actions,
+    this.width = 520,
+    this.headerActions = const [],
+  });
 
   final String title;
   final String? subtitle;
   final Widget child;
   final List<Widget> actions;
   final double width;
+
+  /// Botones de icono junto a "Cerrar" (editar, más opciones…).
+  final List<Widget> headerActions;
 
   @override
   Widget build(BuildContext context) {
@@ -632,22 +643,53 @@ class FormDialog extends StatelessWidget {
               ],
             ),
           ),
+          ...headerActions,
           IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close), tooltip: 'Cerrar'),
         ],
       ),
     );
     final body = Padding(padding: EdgeInsets.fromLTRB(phone ? 16 : 24, 16, phone ? 16 : 24, 8), child: child);
+    // En teléfono: hasta dos botones comparten la fila; con más, el principal
+    // (el último) va solo abajo a todo el ancho para que ningún texto se parta.
+    // Con dos botones, el principal (último) recibe más ancho: "Cobrar Bs. 26.304,00"
+    // no cabe en media pantalla de un teléfono de 360 px.
+    Widget phoneRow(List<Widget> list) => Row(
+          spacing: 10,
+          children: [
+            for (final (i, a) in list.indexed)
+              Expanded(flex: list.length == 2 ? (i == 1 ? 3 : 2) : 1, child: a),
+          ],
+        );
     final buttons = Container(
-      padding: EdgeInsets.fromLTRB(phone ? 16 : 24, 14, phone ? 16 : 24, phone ? 16 : 20),
+      padding: EdgeInsets.fromLTRB(phone ? 16 : 24, phone ? 12 : 14, phone ? 16 : 24, phone ? 12 : 20),
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
-      child: phone
-          ? Row(spacing: 10, children: [for (final a in actions) Expanded(child: a)])
-          : Row(mainAxisAlignment: MainAxisAlignment.end, spacing: 10, children: actions),
+      child: !phone
+          ? Row(mainAxisAlignment: MainAxisAlignment.end, spacing: 10, children: actions)
+          : actions.length <= 2
+              ? phoneRow(actions)
+              : Column(
+                  spacing: 10,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(spacing: 10, children: [for (final a in actions.sublist(0, actions.length - 1)) Expanded(child: a)]),
+                    actions.last,
+                  ],
+                ),
     );
 
     if (phone) {
+      // Botones algo más bajos y con menos relleno lateral que en la PC.
+      final theme = Theme.of(context);
+      const compact = WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12, vertical: 13));
+      final phoneButtons = Theme(
+        data: theme.copyWith(
+          filledButtonTheme: FilledButtonThemeData(style: theme.filledButtonTheme.style?.copyWith(padding: compact)),
+          outlinedButtonTheme: OutlinedButtonThemeData(style: theme.outlinedButtonTheme.style?.copyWith(padding: compact)),
+        ),
+        child: buttons,
+      );
       return Dialog.fullscreen(
         backgroundColor: AppColors.surface,
         child: SafeArea(
@@ -658,7 +700,7 @@ class FormDialog extends StatelessWidget {
               const SizedBox(height: 12),
               Container(height: 3, color: AppColors.ink),
               Expanded(child: SingleChildScrollView(child: body)),
-              buttons,
+              phoneButtons,
             ],
           ),
         ),

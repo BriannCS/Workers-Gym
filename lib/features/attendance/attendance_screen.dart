@@ -208,7 +208,10 @@ class _Pass extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(ok ? 'BIENVENIDO' : 'MEMBRESÍA NO AL DÍA', style: AppText.label),
+                    Text(
+                      ok ? 'BIENVENIDO' : (status == MembershipStatus.inactive ? 'CLIENTE INACTIVO · COBRAR LO REACTIVA' : 'MEMBRESÍA NO AL DÍA'),
+                      style: AppText.label,
+                    ),
                     const SizedBox(height: 4),
                     Text(member.fullName.toUpperCase(), style: AppText.score(context.isPhone ? 30 : 38)),
                     const SizedBox(height: 8),

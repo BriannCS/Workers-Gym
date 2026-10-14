@@ -9,7 +9,10 @@ library;
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gimnasio_app/core/theme/app_theme.dart';
+import 'package:gimnasio_app/features/auth/login_screen.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'helpers.dart';
@@ -119,6 +122,21 @@ void main() {
     await goTo(tester, 'Clientes');
     await shot(tester, 'm2_clientes');
 
+    await tester.ensureVisible(find.text('Luis Alberto Méndez'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Luis Alberto Méndez'));
+    await shot(tester, 'm8_detalle_cliente');
+    await tester.tap(find.byTooltip('Editar'));
+    await shot(tester, 'm9_editar_cliente');
+    for (var i = 0; i < 2; i++) {
+      await tester.tap(find.byTooltip('Cerrar').last);
+      await tester.pumpAndSettle();
+    }
+    await tester.longPress(find.text('Luis Alberto Méndez'));
+    await shot(tester, 'm10_acciones_cliente');
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
     await goTo(tester, 'Tienda');
     await tester.tap(find.text('Agua mineral 600 ml'));
     await tester.tap(find.text('Bebida isotónica'));
@@ -135,5 +153,27 @@ void main() {
     await shot(tester, 'm7_ajustes_oscuro');
     await tester.tap(find.byTooltip('Modo claro'));
     await tester.pumpAndSettle();
+  }, skip: true);
+
+  // Teléfono angosto (360 px): botones de la ficha y cobro en bolívares.
+  testWidgets('capturas teléfono angosto', (tester) async {
+    useDesktopWindow(tester, size: const Size(360, 740));
+    await tester.pumpWidget(buildTestApp());
+    await goTo(tester, 'Clientes');
+    await tester.ensureVisible(find.text('Luis Alberto Méndez'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Luis Alberto Méndez'));
+    await shot(tester, 'n1_ficha_360');
+    await tester.tap(find.text('Cobrar'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Pago móvil'));
+    await tester.tap(find.text('Pago móvil'));
+    await shot(tester, 'n2_cobro_bs_360');
+  }, skip: true);
+
+  testWidgets('captura inicio de sesión', (tester) async {
+    useDesktopWindow(tester, size: phoneSize);
+    await tester.pumpWidget(ProviderScope(child: MaterialApp(theme: AppTheme.build(dark: false), home: const LoginScreen())));
+    await shot(tester, 'm0_inicio_sesion');
   }, skip: true);
 }

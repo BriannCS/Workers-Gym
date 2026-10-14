@@ -274,6 +274,22 @@ class DemoGymRepository implements GymRepository {
   }
 
   @override
+  Future<void> setMemberActive(String id, bool active) async {
+    final i = _members.indexWhere((m) => m.id == id);
+    if (i < 0) throw const GymException('El cliente no existe');
+    _members[i] = _members[i].copyWith(active: active);
+  }
+
+  /// Igual que en el servidor: sale de la planilla, el historial queda.
+  @override
+  Future<void> deleteMember(Member member) async {
+    final i = _members.indexWhere((m) => m.id == member.id);
+    if (i < 0) throw const GymException('El cliente no existe o ya fue eliminado');
+    _photos.remove(member.id);
+    _members.removeAt(i);
+  }
+
+  @override
   Future<Map<String, ImageProvider>> memberPhotos(List<Member> members) async =>
       {for (final m in members) if (_photos[m.id] case final bytes?) m.id: MemoryImage(bytes)};
 
@@ -365,6 +381,10 @@ class DemoGymRepository implements GymRepository {
     if (!plan.active) throw const GymException('El plan no existe o está archivado');
     final method = _activeMethod(p.method.code);
     if (method.inBolivares && p.rate == null) throw const GymException('Falta la tasa de cambio para cobrar en bolívares');
+    final m = _members.indexWhere((x) => x.id == p.member.id);
+    if (m < 0) throw const GymException('El cliente no existe');
+    // Cobrarle a un inactivo lo reactiva.
+    if (!_members[m].active) _members[m] = _members[m].copyWith(active: true);
     final period = renewalPeriod(
       currentExpiresOn: _lastPeriodEnd(p.member.id),
       today: p.today,

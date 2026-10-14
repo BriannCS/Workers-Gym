@@ -221,6 +221,31 @@ void main() {
     });
   });
 
+  group('clientes', () {
+    test('inactivo: no cuenta como vencido y cobrarle lo reactiva', () async {
+      final luis = await member('Luis'); // vencido
+      await repo.setMemberActive(luis.id, false);
+      expect((await member('Luis')).status(testNow), MembershipStatus.inactive);
+
+      final monthly = (await repo.plans()).firstWhere((p) => p.name == 'Mensual');
+      await repo.addPayment(NewPayment.renewal(member: luis, plan: monthly, method: cashUsd, today: testNow));
+      final after = await member('Luis');
+      expect(after.active, isTrue);
+      expect(after.status(testNow), MembershipStatus.active);
+    });
+
+    test('eliminar lo saca de la planilla pero conserva sus pagos', () async {
+      final luis = await member('Luis');
+      final paymentsBefore = (await repo.payments(memberId: luis.id)).length;
+      expect(paymentsBefore, greaterThan(0));
+
+      await repo.deleteMember(luis);
+      expect((await repo.members()).any((m) => m.id == luis.id), isFalse);
+      expect((await repo.payments(memberId: luis.id)).length, paymentsBefore);
+      await expectLater(repo.deleteMember(luis), throwsA(isA<GymException>()));
+    });
+  });
+
   test('foto de perfil: poner y quitar', () async {
     final maria = await member('María');
     await repo.setMemberPhoto(maria, Uint8List.fromList([1, 2, 3]));

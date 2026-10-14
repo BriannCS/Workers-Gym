@@ -23,6 +23,8 @@ Future<bool> checkInMember(BuildContext context, WidgetRef ref, Member member) a
         showToast(context, 'Entrada registrada: $firstName');
       case MembershipStatus.expired || MembershipStatus.none:
         showToast(context, 'Entrada registrada, pero $firstName no tiene la membresía al día', error: true);
+      case MembershipStatus.inactive:
+        showToast(context, 'Entrada registrada, pero $firstName está marcado como inactivo', error: true);
     }
     return true;
   } catch (e) {

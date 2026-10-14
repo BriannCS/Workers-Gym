@@ -108,6 +108,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
       ),
+      // Firma al pie de la pantalla.
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 16, top: 8),
+          child: Text(
+            'Hecho por Briann\$',
+            textAlign: TextAlign.center,
+            style: AppText.mono(size: 12, color: AppColors.textMuted),
+          ),
+        ),
+      ),
     );
   }
 }

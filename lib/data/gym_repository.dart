@@ -16,6 +16,9 @@ abstract interface class GymRepository {
   Future<List<Member>> members();
   Future<Member> createMember(MemberInput input);
   Future<void> updateMember(String id, MemberInput input);
+  Future<void> setMemberActive(String id, bool active);
+  /// Lo saca de la planilla; sus pagos, ventas y asistencias se conservan.
+  Future<void> deleteMember(Member member);
 
   /// Fotos de perfil listas para mostrar, por id de cliente.
   Future<Map<String, ImageProvider>> memberPhotos(List<Member> members);
@@ -102,6 +105,21 @@ class SupabaseGymRepository implements GymRepository {
   @override
   Future<void> updateMember(String id, MemberInput input) =>
       _db.from('members').update(input.toJson()).eq('id', id);
+
+  @override
+  Future<void> setMemberActive(String id, bool active) =>
+      _db.from('members').update({'active': active}).eq('id', id);
+
+  @override
+  Future<void> deleteMember(Member member) async {
+    final photo = await _db.rpc<String?>('delete_member', params: {'p_member_id': member.id});
+    // La foto ya no se muestra en ningún lado; si falla borrarla no es grave.
+    if (photo != null) {
+      try {
+        await _db.storage.from(_photoBucket).remove([photo]);
+      } catch (_) {}
+    }
+  }
 
   @override
   Future<Map<String, ImageProvider>> memberPhotos(List<Member> members) async {

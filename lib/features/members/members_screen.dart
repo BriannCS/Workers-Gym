@@ -9,6 +9,7 @@ import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
 import '../attendance/check_in.dart';
 import '../payments/payment_dialog.dart';
+import 'member_actions.dart';
 import 'member_dialogs.dart';
 
 /// Planilla de clientes: tabla en pantallas anchas, fichas en angostas.
@@ -107,10 +108,11 @@ List<Widget> _actions(BuildContext context, WidgetRef ref, Member member) => [
         onPressed: () => showPaymentDialog(context, member: member),
         icon: const Icon(Icons.payments_outlined, size: 20),
       ),
+      // Editar, activar/desactivar y eliminar (también al mantener presionado).
       IconButton(
-        tooltip: 'Editar',
-        onPressed: () => showMemberForm(context, member: member),
-        icon: const Icon(Icons.edit_outlined, size: 20),
+        tooltip: 'Más opciones',
+        onPressed: () => showMemberActions(context, member),
+        icon: const Icon(Icons.more_vert, size: 20),
       ),
     ];
 
@@ -126,6 +128,8 @@ class _MemberRow extends ConsumerWidget {
     final expires = member.expiresOn;
     return InkWell(
       onTap: () => showMemberDetail(context, member),
+      onLongPress: () => showMemberActions(context, member),
+      onSecondaryTap: () => showMemberActions(context, member),
       hoverColor: AppColors.raised,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -185,6 +189,8 @@ class _MemberCard extends ConsumerWidget {
     final expires = member.expiresOn;
     return InkWell(
       onTap: () => showMemberDetail(context, member),
+      onLongPress: () => showMemberActions(context, member),
+      onSecondaryTap: () => showMemberActions(context, member),
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
         decoration: const BoxDecoration(border: rowRule),

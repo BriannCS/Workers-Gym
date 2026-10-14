@@ -71,7 +71,7 @@ abstract final class AppColors {
         MembershipStatus.active => success,
         MembershipStatus.expiringSoon => warning,
         MembershipStatus.expired => danger,
-        MembershipStatus.none => textMuted,
+        MembershipStatus.none || MembershipStatus.inactive => textMuted,
       };
 }
 

@@ -19,7 +19,7 @@ class PlansScreen extends ConsumerWidget {
     final today = ref.watch(clockProvider)();
     final members = ref.watch(membersProvider).value ?? const <Member>[];
     int activeOn(Plan p) => members
-        .where((m) => m.planName == p.name && m.status(today) != MembershipStatus.expired && m.status(today) != MembershipStatus.none)
+        .where((m) => m.planName == p.name && (m.status(today) == MembershipStatus.active || m.status(today) == MembershipStatus.expiringSoon))
         .length;
 
     return PageBody(
