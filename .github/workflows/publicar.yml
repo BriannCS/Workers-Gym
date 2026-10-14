@@ -131,10 +131,18 @@ jobs:
             echo "keyPassword=$ANDROID_KEY_PASSWORD"
           } > android/key.properties
       - name: Compilar APK
-        run: flutter build apk --release --dart-define-from-file=env.json
-      - name: Nombrar APK
+        # Versión visible = la etiqueta (v1.0.2 → 1.0.2) o la de pubspec.yaml.
+        # Número interno = número de ejecución de Actions: siempre sube, así
+        # Android trata cada APK nuevo como actualización del anterior.
         run: |
           version=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          flutter build apk --release --dart-define-from-file=env.json \
+            --build-name "$version" --build-number "${{ github.run_number }}"
+      - name: Nombrar APK
+        run: |
+          version="$VERSION"
           mv build/app/outputs/flutter-apk/app-release.apk "workers-gym-$version.apk"
           echo "APK=workers-gym-$version.apk" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
