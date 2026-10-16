@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 
 class PlansScreen extends ConsumerWidget {
   const PlansScreen({super.key});
@@ -27,11 +28,12 @@ class PlansScreen extends ConsumerWidget {
         title: 'Planes',
         subtitle: 'Membresías que se pueden cobrar',
         actions: [
-          FilledButton.icon(
-            onPressed: () => _showPlanForm(context),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Nuevo plan'),
-          ),
+          if (ref.watch(canProvider(Perm.plansManage)))
+            FilledButton.icon(
+              onPressed: () => _showPlanForm(context),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Nuevo plan'),
+            ),
         ],
       ),
       children: [
@@ -44,14 +46,21 @@ class PlansScreen extends ConsumerWidget {
                     icon: Icons.style_outlined,
                     title: 'Sin planes',
                     message: 'Crea al menos un plan para poder registrar pagos.',
-                    action: FilledButton(onPressed: () => _showPlanForm(context), child: const Text('Nuevo plan')),
+                    action: ref.watch(canProvider(Perm.plansManage))
+                        ? FilledButton(onPressed: () => _showPlanForm(context), child: const Text('Nuevo plan'))
+                        : null,
                   ),
                 )
               : ResponsiveGrid(
                   minItemWidth: 270,
                   spacing: 20,
                   children: [
-                    for (final (i, p) in list.indexed) _MembershipCard(plan: p, activeMembers: activeOn(p), stripe: _stripes[i % _stripes.length]),
+                    for (final (i, p) in list.indexed) _MembershipCard(
+                      plan: p,
+                      activeMembers: activeOn(p),
+                      stripe: _stripes[i % _stripes.length],
+                      canEdit: ref.watch(canProvider(Perm.plansManage)),
+                    ),
                   ],
                 ),
         ),
@@ -66,11 +75,12 @@ const _stripes = [AppColors.plateBlue, AppColors.plateRed, AppColors.plateYellow
 /// Plan como carné de membresía: franja del color de un disco, perforación
 /// de llavero y el precio como cifra de marcador.
 class _MembershipCard extends StatelessWidget {
-  const _MembershipCard({required this.plan, required this.activeMembers, required this.stripe});
+  const _MembershipCard({required this.plan, required this.activeMembers, required this.stripe, required this.canEdit});
 
   final Plan plan;
   final int activeMembers;
   final Color stripe;
+  final bool canEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +95,7 @@ class _MembershipCard extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => _showPlanForm(context, plan: plan),
+          onTap: canEdit ? () => _showPlanForm(context, plan: plan) : null,
           child: AspectRatio(
             aspectRatio: 1.58, // proporción de tarjeta ID-1
             child: Row(

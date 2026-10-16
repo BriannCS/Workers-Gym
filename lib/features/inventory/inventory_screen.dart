@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -32,13 +33,16 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         title: 'Inventario',
         subtitle: 'Productos de la tienda y proveedores',
         actions: [
-          _suppliersTab
-              ? FilledButton.icon(
+          if (!ref.watch(canProvider(Perm.inventoryManage)))
+            const SizedBox.shrink()
+          else if (_suppliersTab)
+            FilledButton.icon(
                   onPressed: () => _showSupplierForm(context),
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Nuevo proveedor'),
                 )
-              : FilledButton.icon(
+          else
+            FilledButton.icon(
                   onPressed: () => _showProductForm(context),
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Nuevo producto'),
@@ -106,7 +110,9 @@ class _ProductsTable extends ConsumerWidget {
           return EmptyState(
             icon: Icons.inventory_2_outlined,
             title: list.isEmpty ? 'Sin productos' : 'Nada con stock bajo',
-            action: list.isEmpty ? FilledButton(onPressed: () => _showProductForm(context), child: const Text('Nuevo producto')) : null,
+            action: list.isEmpty && ref.watch(canProvider(Perm.inventoryManage))
+                ? FilledButton(onPressed: () => _showProductForm(context), child: const Text('Nuevo producto'))
+                : null,
           );
         }
         return LayoutBuilder(
@@ -114,7 +120,7 @@ class _ProductsTable extends ConsumerWidget {
             children: [
               if (c.maxWidth >= 760)
                 const TableHeader(cells: [('Producto', 5), ('Proveedor', 3), ('Precio', 2), ('Costo', 2), ('Margen', 2), ('Stock', 3), ('', 2)]),
-              for (final p in visible) _ProductRow(product: p, compact: c.maxWidth < 760),
+              for (final p in visible) _ProductRow(product: p, compact: c.maxWidth < 760, canManage: ref.watch(canProvider(Perm.inventoryManage))),
             ],
           ),
         );
@@ -124,10 +130,11 @@ class _ProductsTable extends ConsumerWidget {
 }
 
 class _ProductRow extends StatelessWidget {
-  const _ProductRow({required this.product, required this.compact});
+  const _ProductRow({required this.product, required this.compact, required this.canManage});
 
   final Product product;
   final bool compact;
+  final bool canManage;
 
   @override
   Widget build(BuildContext context) {
@@ -137,12 +144,13 @@ class _ProductRow extends StatelessWidget {
     final stockColor = p.stock == 0 ? AppColors.danger : (p.lowStock ? AppColors.warning : AppColors.success);
     final stock = Text('${p.stock}', style: AppText.score(26, color: stockColor));
     final actions = [
-      IconButton(
+      if (canManage) IconButton(
         tooltip: 'Ajuste de inventario',
         onPressed: () => showDialog(context: context, builder: (_) => _StockDialog(product: p)),
         icon: const Icon(Icons.tune, size: 20),
       ),
-      IconButton(tooltip: 'Editar', onPressed: () => _showProductForm(context, product: p), icon: const Icon(Icons.edit_outlined, size: 20)),
+      if (canManage)
+        IconButton(tooltip: 'Editar', onPressed: () => _showProductForm(context, product: p), icon: const Icon(Icons.edit_outlined, size: 20)),
     ];
     final name = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,7 +245,7 @@ class _SuppliersTable extends ConsumerWidget {
                                 ),
                                 IconButton(
                                   tooltip: 'Editar',
-                                  onPressed: () => _showSupplierForm(context, supplier: s),
+                                  onPressed: ref.watch(canProvider(Perm.inventoryManage)) ? () => _showSupplierForm(context, supplier: s) : null,
                                   icon: const Icon(Icons.edit_outlined, size: 20),
                                 ),
                               ],
@@ -254,7 +262,7 @@ class _SuppliersTable extends ConsumerWidget {
                                     alignment: Alignment.centerRight,
                                     child: IconButton(
                                       tooltip: 'Editar',
-                                      onPressed: () => _showSupplierForm(context, supplier: s),
+                                      onPressed: ref.watch(canProvider(Perm.inventoryManage)) ? () => _showSupplierForm(context, supplier: s) : null,
                                       icon: const Icon(Icons.edit_outlined, size: 20),
                                     ),
                                   ),

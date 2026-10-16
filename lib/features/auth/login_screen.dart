@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/env.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/plate_mark.dart';
+import '../../core/widgets/brand_mark.dart';
 import '../../data/gym_repository.dart';
 
 /// Acceso del personal. Las cuentas se crean desde el panel de Supabase
@@ -65,7 +65,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(child: PlateMark(size: 72)),
+                  const Center(child: BrandMark(size: 112)),
                   const SizedBox(height: 18),
                   Text(Env.gymName.toUpperCase(), textAlign: TextAlign.center, style: AppText.score(56)),
                   const SizedBox(height: 4),
@@ -112,11 +112,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.only(bottom: 16, top: 8),
-          child: Text(
-            'Hecho por Briann\$',
-            textAlign: TextAlign.center,
-            style: AppText.mono(size: 12, color: AppColors.textMuted),
-          ),
+          child: const BrandSignature(size: 12),
         ),
       ),
     );

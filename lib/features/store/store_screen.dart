@@ -8,6 +8,7 @@ import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../data/rates.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 import '../payments/method_picker.dart';
 
 /// Venta en curso. Vive en un provider para que el ticket (panel lateral en
@@ -486,7 +487,7 @@ class _TodaySales extends ConsumerWidget {
                         ),
                         SizedBox(
                           width: 44,
-                          child: s.voided
+                          child: s.voided || !ref.watch(canProvider(Perm.salesVoid))
                               ? null
                               : IconButton(tooltip: 'Anular venta', onPressed: () => _void(context, ref, s), icon: const Icon(Icons.block, size: 18)),
                         ),

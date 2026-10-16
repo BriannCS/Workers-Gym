@@ -28,6 +28,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Sello y logotipos del kit de marca Workers Gym.
+  assets:
+    - assets/brand/
   # Sistema "Bitácora": Big Shoulders (marcador deportivo) para titulares y
   # cifras, Archivo para la interfaz, IBM Plex Mono para horas, montos y rótulos.
   fonts:

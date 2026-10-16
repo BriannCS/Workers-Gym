@@ -349,6 +349,7 @@ class Payment {
     this.amountVesCents,
     this.voidedAt,
     this.voidReason,
+    this.createdBy,
   });
 
   final String id;
@@ -373,6 +374,9 @@ class Payment {
   final DateTime? voidedAt;
   final String? voidReason;
 
+  /// Quién cobró (id del personal).
+  final String? createdBy;
+
   bool get voided => voidedAt != null;
 
   /// Espera `members(full_name)`, `plans(name)` y `payment_methods(name)`.
@@ -394,6 +398,7 @@ class Payment {
         amountVesCents: _int(j['amount_ves_cents']),
         voidedAt: _timestamp(j['voided_at']),
         voidReason: j['void_reason'] as String?,
+        createdBy: j['created_by'] as String?,
       );
 
   Payment voidedWith(String reason, DateTime at) => Payment(
@@ -414,6 +419,7 @@ class Payment {
         amountVesCents: amountVesCents,
         voidedAt: at,
         voidReason: reason,
+        createdBy: createdBy,
       );
 }
 
@@ -668,6 +674,7 @@ class Sale {
     this.totalVesCents,
     this.voidedAt,
     this.voidReason,
+    this.createdBy,
   });
 
   final String id;
@@ -684,6 +691,9 @@ class Sale {
   final int? totalVesCents;
   final DateTime? voidedAt;
   final String? voidReason;
+
+  /// Quién vendió (id del personal).
+  final String? createdBy;
 
   bool get voided => voidedAt != null;
 
@@ -706,6 +716,7 @@ class Sale {
         totalVesCents: _int(j['total_ves_cents']),
         voidedAt: _timestamp(j['voided_at']),
         voidReason: j['void_reason'] as String?,
+        createdBy: j['created_by'] as String?,
       );
 
   Sale voidedWith(String reason, DateTime at) => Sale(
@@ -723,6 +734,7 @@ class Sale {
         totalVesCents: totalVesCents,
         voidedAt: at,
         voidReason: reason,
+        createdBy: createdBy,
       );
 }
 

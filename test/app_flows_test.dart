@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gimnasio_app/core/theme/app_theme.dart';
 import 'package:gimnasio_app/features/auth/login_screen.dart';
+import 'package:gimnasio_app/core/widgets/brand_mark.dart';
 import 'package:gimnasio_app/core/widgets/ui.dart';
 import 'package:gimnasio_app/data/demo_gym_repository.dart';
 import 'package:gimnasio_app/domain/models.dart';
@@ -45,7 +46,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('HOY'), findsOneWidget);
 
-      for (final section in ['Asistencia', 'Clientes', 'Pagos', 'Tienda', 'Inventario', 'Compras', 'Caja', 'Planes', 'Ajustes', 'Inicio']) {
+      for (final section in ['Asistencia', 'Clientes', 'Pagos', 'Tienda', 'Inventario', 'Compras', 'Caja', 'Planes', 'Personal', 'Ajustes', 'Inicio']) {
         await goTo(tester, section);
         expect(tester.takeException(), isNull, reason: '$section en $name');
       }
@@ -137,7 +138,7 @@ void main() {
     useDesktopWindow(tester, size: phoneSize);
     await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: LoginScreen())));
     await tester.pumpAndSettle();
-    expect(find.text(r'Hecho por Briann$'), findsOneWidget);
+    expect(find.text(brandSignature), findsOneWidget);
   });
 
   testWidgets('check-in con Enter registra al primer resultado', (tester) async {

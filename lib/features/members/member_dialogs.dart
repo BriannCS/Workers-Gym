@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 import '../attendance/check_in.dart';
 import '../payments/payment_dialog.dart';
 import 'member_actions.dart';
@@ -248,7 +249,7 @@ class _MemberFormState extends ConsumerState<_MemberForm> {
               decoration: const InputDecoration(labelText: 'Notas', hintText: 'Lesiones, objetivos, observaciones…'),
               maxLines: 3,
             ),
-            if (editing)
+            if (editing && ref.watch(canProvider(Perm.membersDelete)))
               SwitchListTile(
                 value: _active,
                 onChanged: (v) => setState(() => _active = v),
@@ -295,28 +296,34 @@ class _MemberDetail extends ConsumerWidget {
       subtitle: 'Cliente desde ${formatDate(member.createdAt)}',
       width: 640,
       headerActions: [
-        IconButton(
-          tooltip: 'Editar',
-          onPressed: () => showMemberForm(context, member: member),
-          icon: const Icon(Icons.edit_outlined),
-        ),
-        IconButton(
-          tooltip: 'Más opciones',
-          onPressed: () => showMemberActions(context, member),
-          icon: const Icon(Icons.more_vert),
-        ),
+        if (ref.watch(canProvider(Perm.membersEdit)))
+          IconButton(
+            tooltip: 'Editar',
+            onPressed: () => showMemberForm(context, member: member),
+            icon: const Icon(Icons.edit_outlined),
+          ),
+        if (ref.watch(canProvider(Perm.membersEdit)) || ref.watch(canProvider(Perm.membersDelete)))
+          IconButton(
+            tooltip: 'Más opciones',
+            onPressed: () => showMemberActions(context, member),
+            icon: const Icon(Icons.more_vert),
+          ),
       ],
       actions: [
-        OutlinedButton.icon(
-          onPressed: () => checkInMember(context, ref, member),
-          icon: const Icon(Icons.login, size: 18),
-          label: Text(phone ? 'Entrada' : 'Registrar entrada'),
-        ),
-        FilledButton.icon(
-          onPressed: () => showPaymentDialog(context, member: member),
-          icon: const Icon(Icons.payments_outlined, size: 18),
-          label: Text(phone ? 'Cobrar' : 'Registrar pago'),
-        ),
+        if (ref.watch(canProvider(Perm.attendanceCreate)))
+          OutlinedButton.icon(
+            onPressed: () => checkInMember(context, ref, member),
+            icon: const Icon(Icons.login, size: 18),
+            label: Text(phone ? 'Entrada' : 'Registrar entrada'),
+          ),
+        if (ref.watch(canProvider(Perm.paymentsCreate)))
+          FilledButton.icon(
+            onPressed: () => showPaymentDialog(context, member: member),
+            icon: const Icon(Icons.payments_outlined, size: 18),
+            label: Text(phone ? 'Cobrar' : 'Registrar pago'),
+          )
+        else
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

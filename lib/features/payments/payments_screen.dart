@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 import 'payment_dialog.dart';
 
 /// Libro de pagos de membresías.
@@ -30,11 +31,12 @@ class PaymentsScreen extends ConsumerWidget {
         title: 'Pagos',
         subtitle: 'Libro de membresías cobradas',
         actions: [
-          FilledButton.icon(
-            onPressed: () => showPaymentDialog(context),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Registrar pago'),
-          ),
+          if (ref.watch(canProvider(Perm.paymentsCreate)))
+            FilledButton.icon(
+              onPressed: () => showPaymentDialog(context),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Registrar pago'),
+            ),
         ],
       ),
       children: [
@@ -105,7 +107,7 @@ class _PaymentRow extends ConsumerWidget {
           Text(formatVes(p.amountVesCents!), textAlign: TextAlign.right, style: muted.copyWith(fontSize: 11, color: AppColors.plateBlue)),
       ],
     );
-    final voidButton = p.voided
+    final voidButton = p.voided || !ref.watch(canProvider(Perm.paymentsVoid))
         ? const SizedBox(width: 40)
         : IconButton(tooltip: 'Anular pago', onPressed: () => _void(context, ref), icon: const Icon(Icons.block, size: 18));
     final method = Text(p.voided ? 'ANULADO' : p.methodName, style: muted.copyWith(color: p.voided ? AppColors.danger : null));

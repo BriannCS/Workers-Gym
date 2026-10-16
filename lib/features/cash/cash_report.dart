@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../core/formatters.dart';
+import '../../core/widgets/brand_mark.dart' show brandSignature;
 import '../../domain/models.dart';
 
 /// Un renglón del cierre: un pago de membresía o una venta de tienda.
@@ -141,6 +142,8 @@ Future<List<int>> buildCashPdf({
           ),
         dashes(),
         pw.Text('T = tienda · M = membresía', textAlign: pw.TextAlign.center, style: pw.TextStyle(font: mono, fontSize: 6)),
+        pw.SizedBox(height: 4),
+        pw.Text(brandSignature, textAlign: pw.TextAlign.center, style: pw.TextStyle(font: mono, fontSize: 6)),
       ],
     ),
   ));

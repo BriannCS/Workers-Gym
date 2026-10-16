@@ -13,6 +13,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 import 'cash_report.dart';
 
 /// Cierre de caja de un día, presentado como el ticket Z que imprime una
@@ -34,13 +35,16 @@ class _CashScreenState extends ConsumerState<CashScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final day = _day ?? today;
     final data = ref.watch(cashDayProvider(day));
+    // Sin cash.all cada quien ve solo lo que cobró y vendió él mismo.
+    final me = ref.watch(currentStaffProvider).value;
+    final onlyMine = !(me?.can(Perm.cashAll) ?? false);
 
     void go(DateTime d) => setState(() => _day = d.isAfter(today) ? today : d);
 
     return PageBody(
       header: PageHeader(
         title: 'Caja',
-        subtitle: day == today ? 'Hoy · ${formatLongDate(day)}' : formatLongDate(day),
+        subtitle: '${day == today ? 'Hoy · ${formatLongDate(day)}' : formatLongDate(day)}${onlyMine ? ' · tus cobros' : ''}',
         actions: [
           IconButton.outlined(
             tooltip: 'Día anterior',
@@ -66,7 +70,12 @@ class _CashScreenState extends ConsumerState<CashScreen> {
         AsyncView(
           data,
           onRetry: () => ref.invalidate(cashDayProvider(day)),
-          data: (d) => _CashDay(day: day, printedAt: now, payments: d.$1, sales: d.$2),
+          data: (d) => _CashDay(
+            day: day,
+            printedAt: now,
+            payments: onlyMine ? d.$1.where((p) => p.createdBy == me?.userId).toList() : d.$1,
+            sales: onlyMine ? d.$2.where((s) => s.createdBy == me?.userId).toList() : d.$2,
+          ),
         ),
       ],
     );

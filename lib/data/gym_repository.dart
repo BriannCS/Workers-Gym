@@ -7,6 +7,7 @@ import 'package:material_ui/material_ui.dart' show ImageProvider, NetworkImage;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../domain/models.dart';
+import '../domain/staff.dart';
 
 /// Acceso a datos del gimnasio. Implementaciones: [SupabaseGymRepository]
 /// (producción) y `DemoGymRepository` (sin backend, para demo y tests).
@@ -59,11 +60,34 @@ abstract interface class GymRepository {
   Future<List<Purchase>> purchases({DateTime? from, DateTime? to, int limit = 200});
   Future<String> registerPurchase(NewPurchase purchase);
   Future<void> voidPurchase(String id, String reason);
+
+  // Personal y roles
+  /// Quién tiene la sesión iniciada y qué puede hacer; null si la cuenta no
+  /// está activa en el personal.
+  Future<StaffAccess?> myAccess();
+  Future<List<StaffMember>> staffDirectory();
+  Future<String> createStaff(NewStaff staff);
+  Future<void> updateStaff(String userId, StaffInput input);
+  Future<void> setStaffStatus(String userId, StaffStatus status);
+  Future<void> setStaffPassword(String userId, String password);
+  Future<void> changeOwnPassword(String password);
+  Future<List<PermissionInfo>> permissions();
+  Future<Map<StaffRole, Set<String>>> rolePermissions();
+  Future<void> setRolePermission(StaffRole role, String permission, bool enabled);
+  Future<List<StaffShift>> shifts(String userId);
+  Future<void> saveShifts(String userId, List<StaffShift> shifts);
+  Future<List<StaffTimeEntry>> timeEntries({String? userId, required DateTime from});
+  /// Marca entrada o salida de quien tiene la sesión. Devuelve la jornada.
+  Future<StaffTimeEntry> clockInOut();
+  Future<List<AuditEntry>> auditLog({int limit = 200});
 }
 
 String friendlyError(Object e) => switch (e) {
       PostgrestException(code: '23505') => 'Ya existe un registro con ese dato único (cédula o código).',
+      PostgrestException(code: '42501', :final message) when message.startsWith('Tu rol') || message.startsWith('Solo') || message.startsWith('No puedes') =>
+        message.startsWith('Tu rol') ? 'Tu rol no tiene permiso para esta acción.' : message,
       PostgrestException(code: '42501') => 'Tu usuario no tiene permiso para esta acción.',
+      PostgrestException(code: '23514', :final message) when message.contains('dueño') => message,
       // Reglas de formato del servidor (cédula, teléfono, correo, largos).
       PostgrestException(code: '23514', :final message) => switch (message) {
           _ when message.contains('document') => 'La cédula debe ser V o E seguida de 6 a 9 dígitos.',
@@ -330,6 +354,130 @@ class SupabaseGymRepository implements GymRepository {
   @override
   Future<void> voidPurchase(String id, String reason) =>
       _db.rpc<void>('void_purchase', params: {'p_purchase_id': id, 'p_reason': reason});
+
+  // -------------------------------------------------------------------------
+  // Personal y roles
+
+  @override
+  Future<StaffAccess?> myAccess() async {
+    if (_db.auth.currentUser == null) return null;
+    final rows = await _db.rpc<List<dynamic>>('my_access');
+    return rows.isEmpty ? null : StaffAccess.fromJson(rows.first as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<StaffMember>> staffDirectory() async {
+    final rows = await _db.rpc<List<dynamic>>('staff_directory');
+    return [for (final r in rows) StaffMember.fromJson(r as Map<String, dynamic>)];
+  }
+
+  /// La Edge Function `staff-admin` crea la cuenta con la clave de servicio.
+  Future<Map<String, dynamic>> _staffAdmin(Map<String, dynamic> body) async {
+    try {
+      final res = await _db.functions.invoke('staff-admin', body: body);
+      return Map<String, dynamic>.from(res.data as Map);
+    } on FunctionException catch (e) {
+      final details = e.details;
+      final msg = details is Map ? details['error'] as String? : null;
+      if (e.status == 0) throw const GymException('Sin conexión con el servidor. Revisa internet e intenta de nuevo.');
+      throw GymException(msg ?? 'No se pudo completar (${e.status})');
+    }
+  }
+
+  @override
+  Future<String> createStaff(NewStaff s) async {
+    final res = await _staffAdmin({
+      'action': 'create',
+      'email': s.email,
+      'password': s.password,
+      'full_name': s.input.fullName,
+      'role': s.input.role.code,
+      'document_id': s.input.documentId,
+      'phone': s.input.phone,
+      'hired_on': s.input.hiredOn == null ? null : isoDate(s.input.hiredOn!),
+      'notes': s.input.notes,
+    });
+    return res['user_id'] as String;
+  }
+
+  @override
+  Future<void> updateStaff(String userId, StaffInput i) => _db.rpc<void>('staff_update', params: {
+        'p_user_id': userId,
+        'p_full_name': i.fullName,
+        'p_role': i.role.code,
+        'p_document_id': i.documentId,
+        'p_phone': i.phone,
+        'p_email': i.email,
+        'p_hired_on': i.hiredOn == null ? null : isoDate(i.hiredOn!),
+        'p_notes': i.notes,
+      });
+
+  @override
+  Future<void> setStaffStatus(String userId, StaffStatus status) =>
+      _db.rpc<void>('staff_set_status', params: {'p_user_id': userId, 'p_status': status.code});
+
+  @override
+  Future<void> setStaffPassword(String userId, String password) =>
+      _staffAdmin({'action': 'set_password', 'user_id': userId, 'password': password});
+
+  @override
+  Future<void> changeOwnPassword(String password) => _db.auth.updateUser(UserAttributes(password: password));
+
+  @override
+  Future<List<PermissionInfo>> permissions() async {
+    final rows = await _db.from('permissions').select().order('position');
+    return rows.map(PermissionInfo.fromJson).toList();
+  }
+
+  @override
+  Future<Map<StaffRole, Set<String>>> rolePermissions() async {
+    final rows = await _db.from('role_permissions').select();
+    final map = {for (final r in StaffRole.editable) r: <String>{}};
+    for (final r in rows) {
+      map[StaffRole.fromCode(r['role'] as String)]?.add(r['permission'] as String);
+    }
+    return map;
+  }
+
+  @override
+  Future<void> setRolePermission(StaffRole role, String permission, bool enabled) => _db.rpc<void>(
+        'set_role_permission',
+        params: {'p_role': role.code, 'p_permission': permission, 'p_enabled': enabled},
+      );
+
+  @override
+  Future<List<StaffShift>> shifts(String userId) async {
+    final rows = await _db.from('staff_shifts').select().eq('user_id', userId).order('weekday');
+    return rows.map(StaffShift.fromJson).toList();
+  }
+
+  @override
+  Future<void> saveShifts(String userId, List<StaffShift> shifts) async {
+    await _db.from('staff_shifts').delete().eq('user_id', userId);
+    if (shifts.isNotEmpty) await _db.from('staff_shifts').insert([for (final s in shifts) s.toJson(userId)]);
+  }
+
+  @override
+  Future<List<StaffTimeEntry>> timeEntries({String? userId, required DateTime from}) async {
+    var q = _db.from('staff_time_entries').select().gte('clock_in', from.toUtc().toIso8601String());
+    if (userId != null) q = q.eq('user_id', userId);
+    final rows = await q.order('clock_in', ascending: false).limit(500);
+    return rows.map(StaffTimeEntry.fromJson).toList();
+  }
+
+  @override
+  Future<StaffTimeEntry> clockInOut() async {
+    final row = await _db.rpc<Map<String, dynamic>>('staff_clock');
+    return StaffTimeEntry.fromJson(row);
+  }
+
+  @override
+  Future<List<AuditEntry>> auditLog({int limit = 200}) async {
+    final rows = await _db.from('audit_log').select().order('at', ascending: false).limit(limit);
+    final staff = await _db.from('staff').select('user_id, full_name');
+    final names = {for (final s in staff) s['user_id'] as String: s['full_name'] as String};
+    return [for (final r in rows) AuditEntry.fromJson(r, names)];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -347,17 +495,53 @@ final _authChangesProvider = StreamProvider<AuthState>(
   (ref) => ref.watch(supabaseClientProvider)?.auth.onAuthStateChange ?? const Stream.empty(),
 );
 
-/// Nombre del miembro del personal con sesión iniciada. En modo demo es
-/// "Recepción"; null significa que la cuenta no está registrada como personal.
-final currentStaffProvider = FutureProvider<String?>((ref) async {
-  final db = ref.watch(supabaseClientProvider);
-  if (db == null) return 'Recepción';
+/// Quién tiene la sesión iniciada, su rol y sus permisos. null = la cuenta no
+/// está activa en el personal (RLS no le deja ver nada). En modo demo es la
+/// persona elegida en el selector de rol.
+final currentStaffProvider = FutureProvider<StaffAccess?>((ref) async {
   ref.watch(_authChangesProvider); // se recalcula al iniciar/cerrar sesión
-  final uid = db.auth.currentUser?.id;
-  if (uid == null) return null;
-  final row = await db.from('staff').select('full_name').eq('user_id', uid).maybeSingle();
-  return row?['full_name'] as String?;
+  return ref.watch(gymRepositoryProvider).myAccess();
 });
+
+/// ¿Puede la sesión actual hacer [permission]? false mientras carga.
+final canProvider = Provider.family<bool, String>(
+  (ref, permission) => ref.watch(currentStaffProvider).value?.can(permission) ?? false,
+);
+
+final staffDirectoryProvider = FutureProvider<List<StaffMember>>(
+  (ref) => ref.watch(gymRepositoryProvider).staffDirectory(),
+);
+
+final permissionCatalogProvider = FutureProvider<List<PermissionInfo>>(
+  (ref) => ref.watch(gymRepositoryProvider).permissions(),
+);
+
+final rolePermissionsProvider = FutureProvider<Map<StaffRole, Set<String>>>(
+  (ref) => ref.watch(gymRepositoryProvider).rolePermissions(),
+);
+
+final staffShiftsProvider = FutureProvider.family<List<StaffShift>, String>(
+  (ref, userId) => ref.watch(gymRepositoryProvider).shifts(userId),
+);
+
+/// Jornadas de los últimos 62 días (todo el personal si se puede ver; si no,
+/// solo las propias: RLS filtra).
+final staffTimeEntriesProvider = FutureProvider<List<StaffTimeEntry>>((ref) {
+  final now = ref.watch(clockProvider)();
+  return ref.watch(gymRepositoryProvider).timeEntries(from: DateTime(now.year, now.month - 1, 1));
+});
+
+/// Jornada abierta de quien tiene la sesión (null = fuera de turno).
+final myOpenShiftProvider = FutureProvider<StaffTimeEntry?>((ref) async {
+  final me = await ref.watch(currentStaffProvider.future);
+  if (me == null) return null;
+  final entries = await ref.watch(staffTimeEntriesProvider.future);
+  return entries.where((e) => e.userId == me.userId && e.open).firstOrNull;
+});
+
+final auditLogProvider = FutureProvider<List<AuditEntry>>(
+  (ref) => ref.watch(gymRepositoryProvider).auditLog(),
+);
 
 /// Reloj inyectable para que los tests sean deterministas.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
@@ -439,5 +623,11 @@ void refreshGymData(WidgetRef ref) {
     ..invalidate(productsProvider)
     ..invalidate(salesProvider)
     ..invalidate(purchasesProvider)
-    ..invalidate(cashDayProvider);
+    ..invalidate(cashDayProvider)
+    ..invalidate(currentStaffProvider)
+    ..invalidate(staffDirectoryProvider)
+    ..invalidate(rolePermissionsProvider)
+    ..invalidate(staffShiftsProvider)
+    ..invalidate(staffTimeEntriesProvider)
+    ..invalidate(auditLogProvider);
 }

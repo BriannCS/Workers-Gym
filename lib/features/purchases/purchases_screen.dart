@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 
 /// Compras a proveedores: es lo que alimenta el inventario.
 /// Stock actual = stock inicial ± ajustes + compras − ventas.
@@ -27,11 +28,12 @@ class PurchasesScreen extends ConsumerWidget {
         title: 'Compras',
         subtitle: 'Mercancía que entra al inventario',
         actions: [
-          FilledButton.icon(
-            onPressed: () => showPurchaseForm(context),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Nueva compra'),
-          ),
+          if (ref.watch(canProvider(Perm.inventoryManage)))
+            FilledButton.icon(
+              onPressed: () => showPurchaseForm(context),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Nueva compra'),
+            ),
         ],
       ),
       children: [
@@ -52,7 +54,9 @@ class PurchasesScreen extends ConsumerWidget {
                     icon: Icons.local_shipping_outlined,
                     title: 'Sin compras registradas',
                     message: 'Cada compra suma al stock de sus productos.',
-                    action: FilledButton(onPressed: () => showPurchaseForm(context), child: const Text('Nueva compra')),
+                    action: ref.watch(canProvider(Perm.inventoryManage))
+                        ? FilledButton(onPressed: () => showPurchaseForm(context), child: const Text('Nueva compra'))
+                        : null,
                   )
                 : LayoutBuilder(
                     builder: (context, c) => Column(
@@ -163,7 +167,7 @@ class _PurchaseDetail extends ConsumerWidget {
       subtitle: [p.supplierName ?? 'Sin proveedor', formatDate(p.purchasedOn), if (p.invoice != null) 'factura ${p.invoice}'].join(' · '),
       width: 520,
       actions: [
-        if (!p.voided)
+        if (!p.voided && ref.watch(canProvider(Perm.inventoryManage)))
           OutlinedButton.icon(
             onPressed: () => _void(context, ref),
             icon: const Icon(Icons.block, size: 18),

@@ -10,7 +10,8 @@ import '../env.dart';
 import '../router/app_router.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_mode.dart';
-import 'plate_mark.dart';
+import 'brand_mark.dart';
+import 'staff_controls.dart';
 import 'ui.dart';
 
 /// Estructura principal. Escritorio: lomo de tinta con pestañas numeradas.
@@ -28,12 +29,17 @@ class AppShell extends ConsumerWidget {
     final staff = ref.watch(currentStaffProvider);
     if (staff case AsyncData(value: null)) return _NoAccess(supabase: ref.watch(supabaseClientProvider));
 
+    // Sección fuera del rol (p. ej. entrando por URL): el servidor tampoco le
+    // daría datos, así que se explica en vez de mostrar una pantalla vacía.
+    final section = AppSection.at(location);
+    final allowed = staff.value == null || section == null || section.allowedFor(staff.value);
+
     final sync = ref.watch(syncStatusProvider);
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (sync == SyncStatus.offline) const _OfflineBanner(),
-        Expanded(child: _Paper(child: child)),
+        Expanded(child: _Paper(child: allowed ? child : const NotAllowed())),
       ],
     );
 
@@ -225,7 +231,8 @@ class _Spine extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final supabase = ref.watch(supabaseClientProvider);
-    final staffName = ref.watch(currentStaffProvider).value;
+    final access = ref.watch(currentStaffProvider).value;
+    final staffName = access?.fullName;
     final paperDim = AppColors.onSpine.withValues(alpha: .6);
     return Container(
       width: compact ? 88 : 244,
@@ -238,10 +245,10 @@ class _Spine extends ConsumerWidget {
             Padding(
               padding: EdgeInsets.fromLTRB(compact ? 0 : 22, 24, 0, 28),
               child: compact
-                  ? const Center(child: PlateMark(size: 40, hole: AppColors.spine))
+                  ? const Center(child: BrandMark(size: 44))
                   : Row(
                       children: [
-                        const PlateMark(size: 40, hole: AppColors.spine),
+                        const BrandMark(size: 44),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -261,7 +268,7 @@ class _Spine extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final s in AppSection.values)
+                    for (final s in AppSection.values.where((s) => s.allowedFor(access)))
                       _SpineTab(section: s, selected: s.path == location, compact: compact),
                   ],
                 ),
@@ -273,16 +280,21 @@ class _Spine extends ConsumerWidget {
                 crossAxisAlignment: compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
                 children: [
                   if (compact) ...[
+                    const ClockButton(onSpine: true, compact: true),
                     const ThemeToggle(onSpine: true),
                     const SizedBox(height: 8),
                     SyncIndicator(status: sync, onDark: true, showLabel: false),
-                  ] else
+                  ] else ...[
+                    const ClockButton(onSpine: true),
+                    const SizedBox(height: 10),
+                    const DemoRoleSwitcher(onSpine: true),
                     Row(
                       children: [
                         Expanded(child: SyncIndicator(status: sync, onDark: true)),
                         const ThemeToggle(onSpine: true),
                       ],
                     ),
+                  ],
                   if (supabase != null) ...[
                     const SizedBox(height: 14),
                     _SignOut(
@@ -290,6 +302,10 @@ class _Spine extends ConsumerWidget {
                       name: staffName ?? supabase.auth.currentUser?.email ?? 'Recepción',
                       onTap: () => supabase.auth.signOut(),
                     ),
+                  ],
+                  if (!compact) ...[
+                    const SizedBox(height: 16),
+                    BrandSignature(color: paperDim, size: 9),
                   ],
                 ],
               ),
@@ -420,7 +436,7 @@ class _PhoneTopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const PlateMark(size: 30, hole: AppColors.surface),
+          const BrandMark(size: 34),
           const SizedBox(width: 10),
           Expanded(child: Text(Env.gymName.toUpperCase(), style: AppText.score(24), overflow: TextOverflow.ellipsis)),
           SyncIndicator(status: sync),
@@ -438,8 +454,10 @@ class _PhoneTabBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final current = AppSection.values.where((s) => s.path == location).firstOrNull;
-    final moreSelected = current != null && !current.onPhoneBar;
+    final access = ref.watch(currentStaffProvider).value;
+    final current = AppSection.at(location);
+    final bar = AppSection.values.where((s) => s.onPhoneBar && s.allowedFor(access)).toList();
+    final moreSelected = current != null && !bar.contains(current);
     Widget item({required IconData icon, required String label, required bool selected, required VoidCallback onTap}) {
       final fg = selected ? AppColors.onSpine : AppColors.onSpine.withValues(alpha: .6);
       return Expanded(
@@ -467,7 +485,7 @@ class _PhoneTabBar extends ConsumerWidget {
           height: 64,
           child: Row(
             children: [
-              for (final s in AppSection.values.where((s) => s.onPhoneBar))
+              for (final s in bar)
                 item(icon: s.icon, label: s.label, selected: s == current, onTap: () => context.go(s.path)),
               item(
                 icon: Icons.more_horiz,
@@ -491,14 +509,17 @@ class _MoreSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final supabase = ref.watch(supabaseClientProvider);
+    final access = ref.watch(currentStaffProvider).value;
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final s in AppSection.values.where((s) => !s.onPhoneBar))
+            const Padding(padding: EdgeInsets.fromLTRB(4, 4, 4, 8), child: ClockButton()),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: DemoRoleSwitcher()),
+            for (final s in AppSection.values.where((s) => !s.onPhoneBar && s.allowedFor(access)))
               ListTile(
                 leading: Icon(s.icon, color: AppColors.ink),
                 title: Text(s.label.toUpperCase(), style: AppText.score(24)),
@@ -515,7 +536,7 @@ class _MoreSheet extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.logout, color: AppColors.danger),
                 title: Text('CERRAR SESIÓN', style: AppText.score(22, color: AppColors.danger)),
-                subtitle: Text(ref.watch(currentStaffProvider).value ?? supabase.auth.currentUser?.email ?? ''),
+                subtitle: Text(access?.fullName ?? supabase.auth.currentUser?.email ?? ''),
                 onTap: () {
                   Navigator.pop(context);
                   supabase.auth.signOut();

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../data/gym_repository.dart';
+import '../../domain/staff.dart';
 import '../../features/attendance/attendance_screen.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/cash/cash_screen.dart';
@@ -16,29 +17,37 @@ import '../../features/payments/payments_screen.dart';
 import '../../features/plans/plans_screen.dart';
 import '../../features/purchases/purchases_screen.dart';
 import '../../features/settings/settings_screen.dart';
+import '../../features/staff/staff_screen.dart';
 import '../../features/store/store_screen.dart';
 import '../theme/theme_mode.dart';
 import '../widgets/app_shell.dart';
 
 /// Secciones de la app, en orden (el número de pestaña sale del índice).
 /// [onPhoneBar]: va en la barra inferior del teléfono; el resto, en "Más".
+/// [anyOf]: basta con uno de esos permisos para ver la sección (vacío = todos).
 enum AppSection {
   dashboard('/', 'Inicio', Icons.space_dashboard_outlined, onPhoneBar: true),
-  attendance('/asistencia', 'Asistencia', Icons.how_to_reg_outlined, onPhoneBar: true),
-  members('/clientes', 'Clientes', Icons.group_outlined, onPhoneBar: true),
-  payments('/pagos', 'Pagos', Icons.receipt_long_outlined),
-  store('/tienda', 'Tienda', Icons.storefront_outlined, onPhoneBar: true),
-  inventory('/inventario', 'Inventario', Icons.inventory_2_outlined),
-  purchases('/compras', 'Compras', Icons.local_shipping_outlined),
-  cash('/caja', 'Caja', Icons.point_of_sale_outlined),
-  plans('/planes', 'Planes', Icons.style_outlined),
+  attendance('/asistencia', 'Asistencia', Icons.how_to_reg_outlined, onPhoneBar: true, anyOf: [Perm.attendanceCreate]),
+  members('/clientes', 'Clientes', Icons.group_outlined, onPhoneBar: true, anyOf: [Perm.membersView]),
+  payments('/pagos', 'Pagos', Icons.receipt_long_outlined, anyOf: [Perm.paymentsView]),
+  store('/tienda', 'Tienda', Icons.storefront_outlined, onPhoneBar: true, anyOf: [Perm.storeSell]),
+  inventory('/inventario', 'Inventario', Icons.inventory_2_outlined, anyOf: [Perm.inventoryView]),
+  purchases('/compras', 'Compras', Icons.local_shipping_outlined, anyOf: [Perm.inventoryView]),
+  cash('/caja', 'Caja', Icons.point_of_sale_outlined, anyOf: [Perm.cashOwn, Perm.cashAll]),
+  plans('/planes', 'Planes', Icons.style_outlined, anyOf: [Perm.paymentsCreate, Perm.plansManage]),
+  staff('/personal', 'Personal', Icons.badge_outlined, anyOf: [Perm.staffView]),
   settings('/ajustes', 'Ajustes', Icons.settings_outlined);
 
-  const AppSection(this.path, this.label, this.icon, {this.onPhoneBar = false});
+  const AppSection(this.path, this.label, this.icon, {this.onPhoneBar = false, this.anyOf = const []});
   final String path;
   final String label;
   final IconData icon;
   final bool onPhoneBar;
+  final List<String> anyOf;
+
+  bool allowedFor(StaffAccess? access) => anyOf.isEmpty || (access?.canAny(anyOf) ?? false);
+
+  static AppSection? at(String location) => values.where((s) => s.path == location).firstOrNull;
 
   Widget get screen => switch (this) {
         dashboard => const DashboardScreen(),
@@ -50,6 +59,7 @@ enum AppSection {
         purchases => const PurchasesScreen(),
         cash => const CashScreen(),
         plans => const PlansScreen(),
+        staff => const StaffScreen(),
         settings => const SettingsScreen(),
       };
 }

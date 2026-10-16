@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 import 'member_dialogs.dart';
 
 /// Acciones de un cliente: editar, activar/desactivar y eliminar. Se abre al
@@ -96,18 +97,21 @@ class _MemberActionsSheet extends ConsumerWidget {
               ),
             ),
             Container(height: 3, color: AppColors.ink),
-            _ActionTile(
-              icon: Icons.edit_outlined,
-              label: 'Editar datos',
-              onTap: () => run(() => showMemberForm(host, member: member)),
-            ),
-            _ActionTile(
+            if (ref.watch(canProvider(Perm.membersEdit)))
+              _ActionTile(
+                icon: Icons.edit_outlined,
+                label: 'Editar datos',
+                onTap: () => run(() => showMemberForm(host, member: member)),
+              ),
+            if (ref.watch(canProvider(member.active ? Perm.membersDelete : Perm.membersEdit)))
+              _ActionTile(
               icon: member.active ? Icons.pause_circle_outline : Icons.play_circle_outline,
               label: member.active ? 'Marcar como inactivo' : 'Marcar como activo',
               detail: member.active ? 'Deja de contar en vencidos y por vencer' : 'Vuelve a la planilla de activos',
               onTap: () => run(() => _toggleActive(ref)),
             ),
-            _ActionTile(
+            if (ref.watch(canProvider(Perm.membersDelete)))
+              _ActionTile(
               icon: Icons.delete_outline,
               label: 'Eliminar cliente',
               detail: 'Sus pagos y asistencias se conservan en caja',

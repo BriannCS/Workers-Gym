@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 import '../members/member_dialogs.dart';
 import '../payments/payment_dialog.dart';
 
@@ -31,16 +32,18 @@ class DashboardScreen extends ConsumerWidget {
         title: 'Hoy',
         subtitle: '${formatLongDate(today)} · parte del día',
         actions: [
-          OutlinedButton.icon(
-            onPressed: () => showMemberForm(context),
-            icon: const Icon(Icons.person_add_alt, size: 18),
-            label: const Text('Nuevo cliente'),
-          ),
-          FilledButton.icon(
-            onPressed: () => showPaymentDialog(context),
-            icon: const Icon(Icons.payments_outlined, size: 18),
-            label: const Text('Registrar pago'),
-          ),
+          if (ref.watch(canProvider(Perm.membersEdit)))
+            OutlinedButton.icon(
+              onPressed: () => showMemberForm(context),
+              icon: const Icon(Icons.person_add_alt, size: 18),
+              label: const Text('Nuevo cliente'),
+            ),
+          if (ref.watch(canProvider(Perm.paymentsCreate)))
+            FilledButton.icon(
+              onPressed: () => showPaymentDialog(context),
+              icon: const Icon(Icons.payments_outlined, size: 18),
+              label: const Text('Registrar pago'),
+            ),
         ],
       ),
       children: [
@@ -61,7 +64,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-class _Content extends StatelessWidget {
+class _Content extends ConsumerWidget {
   const _Content({
     required this.members,
     required this.payments,
@@ -79,7 +82,9 @@ class _Content extends StatelessWidget {
   final DateTime today;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showMoney = ref.watch(canProvider(Perm.dashboardMoney));
+    final showStock = ref.watch(canProvider(Perm.inventoryView));
     final byStatus = {for (final s in MembershipStatus.values) s: <Member>[]};
     for (final m in members) {
       byStatus[m.status(today)]!.add(m);
@@ -140,8 +145,8 @@ class _Content extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             spacing: 24,
             children: [
-              _RevenueTape(month: thisMonth, previous: previous.totalCents, today: today),
-              if (lowStock.isNotEmpty) _LowStockNote(products: lowStock),
+              if (showMoney) _RevenueTape(month: thisMonth, previous: previous.totalCents, today: today),
+              if (showStock && lowStock.isNotEmpty) _LowStockNote(products: lowStock),
               _SignInSheet(attendance: attendance),
             ],
           );
@@ -176,17 +181,17 @@ class _CallList extends StatelessWidget {
   }
 }
 
-class _CallRow extends StatelessWidget {
+class _CallRow extends ConsumerWidget {
   const _CallRow({required this.member, required this.today});
 
   final Member member;
   final DateTime today;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final status = member.status(today);
     final left = daysLeft(member.expiresOn!, today);
-    final renew = OutlinedButton(
+    final renew = !ref.watch(canProvider(Perm.paymentsCreate)) ? const SizedBox.shrink() : OutlinedButton(
       onPressed: () => showPaymentDialog(context, member: member),
       style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
       child: const Text('Renovar'),

@@ -6,10 +6,13 @@ import '../../core/formatters.dart';
 import '../../core/input_formatters.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_mode.dart';
+import '../../core/widgets/brand_mark.dart';
 import '../../core/widgets/ui.dart';
+import '../staff/staff_screen.dart' show RoleBadge, showOwnPasswordDialog;
 import '../../data/gym_repository.dart';
 import '../../data/rates.dart';
 import '../../domain/models.dart';
+import '../../domain/staff.dart';
 
 /// Ajustes: apariencia (por dispositivo), tasa de cambio y métodos de pago
 /// (compartidos: los ve igual la PC de recepción y el teléfono).
@@ -18,23 +21,37 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final manage = ref.watch(canProvider(Perm.settingsManage));
     return PageBody(
-      header: const PageHeader(title: 'Ajustes', subtitle: 'Apariencia, tasa de cambio y métodos de pago'),
+      header: PageHeader(
+        title: 'Ajustes',
+        subtitle: manage ? 'Apariencia, tasa de cambio y métodos de pago' : 'Tu cuenta y la apariencia',
+      ),
       children: [
         LayoutBuilder(builder: (context, c) {
           const rate = _RateSection();
           const methods = _MethodsSection();
           const look = _AppearanceSection();
-          if (c.maxWidth < 980) return const Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [rate, methods, look]);
+          const account = _AccountSection();
+          if (!manage) {
+            return const Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [account, look]);
+          }
+          if (c.maxWidth < 980) {
+            return const Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [rate, methods, look, account]);
+          }
           return const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             spacing: 28,
             children: [
               Expanded(flex: 6, child: rate),
-              Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [methods, look])),
+              Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [methods, look, account])),
             ],
           );
         }),
+        const Padding(
+          padding: EdgeInsets.only(top: 12),
+          child: Column(children: [BrandMark(size: 56), SizedBox(height: 8), BrandSignature()]),
+        ),
       ],
     );
   }
@@ -367,5 +384,42 @@ class _MethodsSectionState extends ConsumerState<_MethodsSection> {
       await repo.addPaymentMethod(name, _currency);
       _name.clear();
     }, '$name agregado');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mi cuenta
+
+class _AccountSection extends ConsumerWidget {
+  const _AccountSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final me = ref.watch(currentStaffProvider).value;
+    if (me == null) return const SizedBox.shrink();
+    return Panel(
+      title: 'Mi cuenta',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 10,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(me.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16))),
+              RoleBadge(me.role),
+            ],
+          ),
+          Text(me.role.summary, style: AppText.muted),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: () => showOwnPasswordDialog(context, me),
+              icon: const Icon(Icons.key_outlined, size: 18),
+              label: const Text('Cambiar mi contraseña'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -32,6 +32,10 @@ final Map<String, List<ProviderOrFamily>> _affected = {
   'purchases': [purchasesProvider, productsProvider],
   'payment_methods': [paymentMethodsProvider],
   'settings': [settingsProvider],
+  // Un cambio de rol, permiso o suspensión se aplica al instante en la app.
+  'staff': [currentStaffProvider, staffDirectoryProvider],
+  'role_permissions': [currentStaffProvider, rolePermissionsProvider],
+  'staff_time_entries': [staffTimeEntriesProvider, staffDirectoryProvider],
 };
 
 /// Mantiene un canal de Supabase Realtime abierto y recarga solo lo afectado
