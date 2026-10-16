@@ -545,8 +545,8 @@ class Product {
     required this.id,
     required this.name,
     required this.priceCents,
-    required this.costCents,
     required this.stock,
+    this.costCents,
     this.minStock = 0,
     this.sku,
     this.supplierId,
@@ -558,7 +558,9 @@ class Product {
   final String name;
   final String? sku;
   final int priceCents;
-  final int costCents;
+
+  /// null = la sesión no tiene permiso para ver costos (inventory.cost).
+  final int? costCents;
 
   /// Stock actual = inicial ± ajustes + compras − ventas (sin anuladas).
   final int stock;
@@ -575,7 +577,7 @@ class Product {
         name: j['name'] as String,
         sku: j['sku'] as String?,
         priceCents: j['price_cents'] as int,
-        costCents: j['cost_cents'] as int,
+        costCents: j['cost_cents'] as int?,
         stock: j['stock'] as int,
         minStock: j['min_stock'] as int,
         supplierId: j['supplier_id'] as String?,
@@ -603,7 +605,7 @@ class ProductInput {
   const ProductInput({
     required this.name,
     required this.priceCents,
-    required this.costCents,
+    this.costCents,
     this.minStock = 0,
     this.sku,
     this.supplierId,
@@ -613,7 +615,9 @@ class ProductInput {
   final String name;
   final String? sku;
   final int priceCents;
-  final int costCents;
+
+  /// null = no se toca el costo guardado (quien edita no puede verlo).
+  final int? costCents;
   final int minStock;
   final String? supplierId;
   final bool active;
@@ -622,7 +626,7 @@ class ProductInput {
         'name': name,
         'sku': sku,
         'price_cents': priceCents,
-        'cost_cents': costCents,
+        if (costCents != null) 'cost_cents': costCents,
         'min_stock': minStock,
         'supplier_id': supplierId,
         'active': active,

@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../domain/models.dart';
 import '../domain/staff.dart';
+import '../domain/workouts.dart';
 
 /// Acceso a datos del gimnasio. Implementaciones: [SupabaseGymRepository]
 /// (producción) y `DemoGymRepository` (sin backend, para demo y tests).
@@ -61,6 +62,11 @@ abstract interface class GymRepository {
   Future<String> registerPurchase(NewPurchase purchase);
   Future<void> voidPurchase(String id, String reason);
 
+  // Entrenos
+  Future<List<WorkoutLog>> workouts({String? memberId, DateTime? from, int limit = 300});
+  Future<String> saveWorkout(WorkoutInput input, {String? id});
+  Future<void> deleteWorkout(String id);
+
   // Personal y roles
   /// Quién tiene la sesión iniciada y qué puede hacer; null si la cuenta no
   /// está activa en el personal.
@@ -111,7 +117,12 @@ class SupabaseGymRepository implements GymRepository {
 
   static const _photoBucket = 'member-photos';
   static const _paymentSelect = '*, members(full_name), plans(name), payment_methods(name)';
-  static const _saleSelect = '*, members(full_name), payment_methods(name), sale_items(*, products(name))';
+  // Sin costos: products.cost_cents y sale_items.unit_cost_cents no se pueden
+  // leer directo; los costos llegan por product_costs() solo con permiso.
+  static const _saleSelect =
+      '*, members(full_name), payment_methods(name), sale_items(id, sale_id, product_id, quantity, unit_price_cents, products(name))';
+  static const _productSelect = 'id, name, sku, price_cents, stock, min_stock, supplier_id, active, suppliers(name)';
+  static const _workoutSelect = '*, members(full_name)';
   static const _purchaseSelect = '*, suppliers(name), purchase_items(*, products(name))';
 
   @override
@@ -283,8 +294,11 @@ class SupabaseGymRepository implements GymRepository {
 
   @override
   Future<List<Product>> products() async {
-    final rows = await _db.from('products').select('*, suppliers(name)').order('active', ascending: false).order('name');
-    return rows.map(Product.fromJson).toList();
+    final rowsF = _db.from('products').select(_productSelect).order('active', ascending: false).order('name');
+    final costsF = _db.rpc<List<dynamic>>('product_costs');
+    final rows = await rowsF;
+    final costs = {for (final c in await costsF) (c as Map)['product_id'] as String: c['cost_cents'] as int};
+    return [for (final r in rows) Product.fromJson({...r, 'cost_cents': costs[r['id']]})];
   }
 
   @override
@@ -354,6 +368,34 @@ class SupabaseGymRepository implements GymRepository {
   @override
   Future<void> voidPurchase(String id, String reason) =>
       _db.rpc<void>('void_purchase', params: {'p_purchase_id': id, 'p_reason': reason});
+
+  // -------------------------------------------------------------------------
+  // Entrenos
+
+  @override
+  Future<List<WorkoutLog>> workouts({String? memberId, DateTime? from, int limit = 300}) async {
+    var query = _db.from('workout_logs').select(_workoutSelect);
+    if (memberId != null) query = query.eq('member_id', memberId);
+    if (from != null) query = query.gte('trained_on', isoDate(from));
+    final rows = await query.order('trained_on', ascending: false).order('created_at', ascending: false).limit(limit);
+    return rows.map(WorkoutLog.fromJson).toList();
+  }
+
+  @override
+  Future<String> saveWorkout(WorkoutInput input, {String? id}) async {
+    if (id != null) {
+      await _db.from('workout_logs').update(input.toJson()).eq('id', id);
+      return id;
+    }
+    final row = await _db.from('workout_logs').insert(input.toJson()).select('id').single();
+    return row['id'] as String;
+  }
+
+  @override
+  Future<void> deleteWorkout(String id) async {
+    final rows = await _db.from('workout_logs').delete().eq('id', id).select('id');
+    if (rows.isEmpty) throw const GymException('Solo puedes borrar los entrenos que registraste tú');
+  }
 
   // -------------------------------------------------------------------------
   // Personal y roles
@@ -600,6 +642,12 @@ final purchasesProvider = FutureProvider<List<Purchase>>(
   (ref) => ref.watch(gymRepositoryProvider).purchases(),
 );
 
+/// Entrenos de los últimos 120 días (la pantalla filtra por cliente).
+final workoutsProvider = FutureProvider<List<WorkoutLog>>((ref) {
+  final now = ref.watch(clockProvider)();
+  return ref.watch(gymRepositoryProvider).workouts(from: DateTime(now.year, now.month, now.day - 120));
+});
+
 /// Movimientos de un día (fecha local, a medianoche) para el cierre de caja.
 final cashDayProvider = FutureProvider.family<(List<Payment>, List<Sale>), DateTime>((ref, day) async {
   final repo = ref.watch(gymRepositoryProvider);
@@ -624,6 +672,7 @@ void refreshGymData(WidgetRef ref) {
     ..invalidate(salesProvider)
     ..invalidate(purchasesProvider)
     ..invalidate(cashDayProvider)
+    ..invalidate(workoutsProvider)
     ..invalidate(currentStaffProvider)
     ..invalidate(staffDirectoryProvider)
     ..invalidate(rolePermissionsProvider)

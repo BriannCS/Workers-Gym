@@ -46,7 +46,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('HOY'), findsOneWidget);
 
-      for (final section in ['Asistencia', 'Clientes', 'Pagos', 'Tienda', 'Inventario', 'Compras', 'Caja', 'Planes', 'Personal', 'Ajustes', 'Inicio']) {
+      for (final section in ['Asistencia', 'Clientes', 'Pagos', 'Tienda', 'Inventario', 'Compras', 'Caja', 'Planes', 'Personal', 'Entrenos', 'Ajustes', 'Inicio']) {
         await goTo(tester, section);
         expect(tester.takeException(), isNull, reason: '$section en $name');
       }

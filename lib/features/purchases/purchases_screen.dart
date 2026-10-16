@@ -396,7 +396,8 @@ class _LineEditor extends StatelessWidget {
         onSelected: (p) {
           line.product = p;
           // Propone el último costo conocido.
-          if (p != null && line.cost.text.isEmpty) line.cost.text = (p.costCents / 100).toStringAsFixed(2);
+          final known = p?.costCents;
+          if (known != null && line.cost.text.isEmpty) line.cost.text = (known / 100).toStringAsFixed(2);
           onChanged();
         },
         dropdownMenuEntries: [for (final p in products) DropdownMenuEntry(value: p, label: p.name)],

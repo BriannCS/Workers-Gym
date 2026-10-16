@@ -2,10 +2,10 @@
 // Control de personal y roles: las reglas del repositorio demo son las mismas
 // que aplican RLS y los triggers en Supabase.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gimnasio_app/core/widgets/ui.dart';
 import 'package:gimnasio_app/data/demo_gym_repository.dart';
 import 'package:gimnasio_app/domain/models.dart';
 import 'package:gimnasio_app/domain/staff.dart';
+import 'package:gimnasio_app/domain/workouts.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'helpers.dart';
@@ -87,6 +87,63 @@ void main() {
       expect(lateMinutes(closed, shifts), 12, reason: 'su turno empieza a las 06:00');
     });
 
+    test('entrenos: el entrenador anota y solo edita lo suyo', () async {
+      final repo = repoAs(StaffRole.trainer);
+      final member = (await repo.members()).first;
+      final id = await repo.saveWorkout(
+        WorkoutInput(
+          memberId: member.id,
+          trainedOn: testNow,
+          bodyParts: const [BodyPart.pecho, BodyPart.triceps],
+          types: const [WorkoutType.hipertrofia],
+          effort: 4,
+        ),
+      );
+      final mine = (await repo.workouts(memberId: member.id)).firstWhere((w) => w.id == id);
+      expect(mine.trainerName, 'Pedro Salazar');
+      await expectLater(
+        repo.saveWorkout(WorkoutInput(memberId: member.id, trainedOn: testNow)),
+        throwsA(isA<GymException>()),
+        reason: 'vacío',
+      );
+
+      repo.actAs(StaffRole.reception);
+      expect(await repo.workouts(), isEmpty, reason: 'recepción no ve entrenos');
+      await expectLater(repo.deleteWorkout(id), throwsA(isA<GymException>()));
+
+      repo.actAs(StaffRole.admin);
+      await repo.deleteWorkout(id);
+      expect((await repo.workouts()).any((w) => w.id == id), isFalse);
+    });
+
+    test('recepción no ve costos ni compras', () async {
+      final repo = repoAs(StaffRole.reception);
+      expect((await repo.products()).every((p) => p.costCents == null), isTrue);
+      expect(await repo.purchases(), isEmpty);
+      repo.actAs(StaffRole.owner);
+      expect((await repo.products()).every((p) => p.costCents != null), isTrue);
+    });
+
+    test('equilibrio: días desde que se trabajó cada parte', () {
+      final today = DateTime(2026, 10, 16);
+      WorkoutLog log(int daysAgo, List<BodyPart> parts) => WorkoutLog(
+        id: '$daysAgo',
+        memberId: 'm',
+        trainedOn: today.subtract(Duration(days: daysAgo)),
+        bodyParts: parts,
+        createdBy: 'x',
+        createdAt: today,
+      );
+      final since = daysSinceWorked([
+        log(5, [BodyPart.pecho]),
+        log(2, [BodyPart.pecho, BodyPart.espalda]),
+        log(9, [BodyPart.cuerpoCompleto]),
+      ], today);
+      expect(since[BodyPart.pecho], 2);
+      expect(since[BodyPart.espalda], 2);
+      expect(since[BodyPart.pantorrillas], 9, reason: 'cuerpo completo cuenta para todo');
+    });
+
     test('alta de personal con contraseña y cédula únicas', () async {
       final repo = repoAs(StaffRole.admin);
       final id = await repo.createStaff(
@@ -142,7 +199,7 @@ void main() {
       useDesktopWindow(tester);
       await tester.pumpWidget(buildTestApp(repo: repoAs(StaffRole.trainer)));
       await tester.pumpAndSettle();
-      for (final visible in ['INICIO', 'ASISTENCIA', 'CLIENTES', 'AJUSTES']) {
+      for (final visible in ['INICIO', 'ASISTENCIA', 'CLIENTES', 'ENTRENOS', 'AJUSTES']) {
         expect(find.text(visible), findsOneWidget, reason: visible);
       }
       for (final hidden in ['PAGOS', 'TIENDA', 'INVENTARIO', 'COMPRAS', 'CAJA', 'PLANES', 'PERSONAL']) {
@@ -158,7 +215,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(repo: repo));
       await tester.pumpAndSettle();
       await goTo(tester, 'Personal');
-      for (final name in ['Briann', 'Mariana López', 'Laura Rivas', 'Pedro Salazar']) {
+      expect(find.text('Briann'), findsWidgets, reason: 'en la lista y en su tarjeta');
+      for (final name in ['Mariana López', 'Laura Rivas', 'Pedro Salazar']) {
         expect(find.text(name), findsOneWidget, reason: name);
       }
 
@@ -177,24 +235,75 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('el botón de marcaje registra la entrada', (tester) async {
+    testWidgets('el botón de marcaje de la tarjeta registra la entrada', (tester) async {
       useDesktopWindow(tester);
       await tester.pumpWidget(buildTestApp(repo: repoAs(StaffRole.reception)));
       await tester.pumpAndSettle();
-      expect(find.text('FUERA DE TURNO'), findsOneWidget);
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Marcar entrada'));
+      expect(find.text('Laura Rivas'), findsOneWidget);
+      expect(find.text('RECEPCIÓN'), findsOneWidget);
+      await tester.tap(find.byTooltip('Marcar entrada'));
       await tester.pumpAndSettle();
-      expect(find.text('EN TURNO DESDE 17:30'), findsOneWidget);
-      expect(find.widgetWithText(OutlinedButton, 'Marcar salida'), findsOneWidget);
+      expect(find.text('RECEPCIÓN · EN TURNO 17:30'), findsOneWidget);
+      expect(find.byTooltip('Marcar salida'), findsOneWidget);
     });
 
-    testWidgets('la caja de recepción muestra solo sus cobros', (tester) async {
+    testWidgets('recepción no ve ingresos, caja, compras ni costos', (tester) async {
       useDesktopWindow(tester);
       await tester.pumpWidget(buildTestApp(repo: repoAs(StaffRole.reception)));
       await tester.pumpAndSettle();
-      await goTo(tester, 'Caja');
-      expect(find.textContaining('TUS COBROS'), findsOneWidget);
-      expect(find.byType(FormDialog), findsNothing);
+      for (final hidden in ['CAJA', 'COMPRAS', 'PERSONAL']) {
+        expect(find.text(hidden), findsNothing, reason: hidden);
+      }
+      expect(find.textContaining('INGRESOS'), findsNothing);
+
+      await goTo(tester, 'Pagos');
+      expect(find.text('ESTE MES'), findsNothing);
+
+      await goTo(tester, 'Inventario');
+      expect(find.text('VALOR DEL INVENTARIO'), findsNothing);
+      expect(find.text('COSTO'), findsNothing);
+      expect(find.text('MARGEN'), findsNothing);
+      expect(find.text('Proveedores'), findsNothing);
+      expect(find.text('STOCK'), findsOneWidget);
+    });
+
+    testWidgets('el dueño sí ve costos e ingresos', (tester) async {
+      useDesktopWindow(tester);
+      await tester.pumpWidget(buildTestApp(repo: repoAs(StaffRole.owner)));
+      await tester.pumpAndSettle();
+      await goTo(tester, 'Inventario');
+      expect(find.text('VALOR DEL INVENTARIO'), findsOneWidget);
+      expect(find.text('MARGEN'), findsOneWidget);
+    });
+
+    testWidgets('el menú lateral se contrae y se vuelve a abrir', (tester) async {
+      useDesktopWindow(tester);
+      await tester.pumpWidget(buildTestApp(repo: repoAs(StaffRole.owner)));
+      await tester.pumpAndSettle();
+      expect(find.text('INVENTARIO'), findsOneWidget);
+      await tester.tap(find.byTooltip('Contraer menú'));
+      await tester.pumpAndSettle();
+      expect(find.text('INVENTARIO'), findsNothing);
+      expect(find.byTooltip('Abrir menú'), findsOneWidget);
+      await tester.tap(find.byTooltip('Abrir menú'));
+      await tester.pumpAndSettle();
+      expect(find.text('INVENTARIO'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('el entrenador registra un entreno', (tester) async {
+      useDesktopWindow(tester);
+      await tester.pumpWidget(buildTestApp(repo: repoAs(StaffRole.trainer)));
+      await tester.pumpAndSettle();
+      await goTo(tester, 'Entrenos');
+      expect(find.text('BITÁCORA'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Registrar entreno').first);
+      await tester.pumpAndSettle();
+      // Sin cliente no guarda.
+      await tester.tap(find.widgetWithText(FilledButton, 'Guardar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Elige el cliente'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

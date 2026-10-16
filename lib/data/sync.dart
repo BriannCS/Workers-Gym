@@ -32,6 +32,7 @@ final Map<String, List<ProviderOrFamily>> _affected = {
   'purchases': [purchasesProvider, productsProvider],
   'payment_methods': [paymentMethodsProvider],
   'settings': [settingsProvider],
+  'workout_logs': [workoutsProvider],
   // Un cambio de rol, permiso o suspensión se aplica al instante en la app.
   'staff': [currentStaffProvider, staffDirectoryProvider],
   'role_permissions': [currentStaffProvider, rolePermissionsProvider],
@@ -47,31 +48,49 @@ class SyncController extends Notifier<SyncStatus> {
   final _pending = <String>{};
   bool _wasLive = false;
 
+  /// Un corte breve del socket (se reconecta solo) no debe hacer parpadear el
+  /// indicador: si estaba en vivo, se espera un poco antes de mostrarlo.
+  Timer? _grace;
+  static const _graceDelay = Duration(seconds: 4);
+
+  void _show(SyncStatus next) {
+    if (next == SyncStatus.live || stateOrNull != SyncStatus.live) {
+      _grace?.cancel();
+      _grace = null;
+      state = next;
+      return;
+    }
+    _grace ??= Timer(_graceDelay, () {
+      _grace = null;
+      state = next;
+    });
+  }
+
   @override
   SyncStatus build() {
     final db = ref.watch(supabaseClientProvider);
     if (db == null) return SyncStatus.local;
     // Solo con sesión: el canal usa el token del usuario para aplicar RLS.
-    if (ref.watch(currentStaffProvider).value == null) return SyncStatus.connecting;
+    // Se observa SOLO quién es (no sus datos): si observara todo el acceso,
+    // cada recarga de la sesión (que este mismo canal provoca al conectar)
+    // reconstruiría el canal y la app oscilaría entre "En vivo" y "Conectando".
+    if (ref.watch(currentStaffProvider.select((a) => a.value?.userId)) == null) return SyncStatus.connecting;
 
     final channel = db.channel('gym-sync');
     for (final table in _affected.keys) {
-      channel.onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: table,
-        callback: (_) => _queue(table),
-      );
+      channel.onPostgresChanges(event: PostgresChangeEvent.all, schema: 'public', table: table, callback: (_) => _queue(table));
     }
     channel.subscribe((status, _) {
+      // Avisos de un canal ya reemplazado no cuentan.
+      if (!identical(_channel, channel)) return;
       final live = status == RealtimeSubscribeStatus.subscribed;
       if (live && !_wasLive && stateOrNull != null) refreshAll();
       _wasLive = live;
-      state = switch (status) {
+      _show(switch (status) {
         RealtimeSubscribeStatus.subscribed => SyncStatus.live,
         RealtimeSubscribeStatus.timedOut || RealtimeSubscribeStatus.channelError => SyncStatus.offline,
         RealtimeSubscribeStatus.closed => SyncStatus.connecting,
-      };
+      });
     });
     _channel = channel;
 
@@ -82,7 +101,11 @@ class SyncController extends Notifier<SyncStatus> {
     ref.onDispose(() {
       lifecycle.dispose();
       _debounce?.cancel();
-      if (_channel != null) db.removeChannel(_channel!);
+      _grace?.cancel();
+      _grace = null;
+      final old = _channel;
+      _channel = null;
+      if (old != null) db.removeChannel(old);
     });
     return SyncStatus.connecting;
   }

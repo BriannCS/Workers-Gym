@@ -11,6 +11,8 @@ abstract final class Perm {
   static const membersView = 'members.view';
   static const membersEdit = 'members.edit';
   static const membersDelete = 'members.delete';
+  static const workoutsView = 'workouts.view';
+  static const workoutsEdit = 'workouts.edit';
   static const paymentsView = 'payments.view';
   static const paymentsCreate = 'payments.create';
   static const paymentsVoid = 'payments.void';
@@ -18,6 +20,8 @@ abstract final class Perm {
   static const salesVoid = 'sales.void';
   static const inventoryView = 'inventory.view';
   static const inventoryManage = 'inventory.manage';
+  static const inventoryCost = 'inventory.cost';
+  static const purchasesView = 'purchases.view';
   static const cashOwn = 'cash.own';
   static const cashAll = 'cash.all';
   static const plansManage = 'plans.manage';
@@ -43,18 +47,22 @@ class PermissionInfo {
 /// Catálogo en el mismo orden que la base de datos. Lo usa el modo demo y
 /// sirve de respaldo si la tabla no responde.
 const permissionCatalog = <PermissionInfo>[
-  PermissionInfo(Perm.dashboardMoney, 'Ver montos en Inicio', 'Inicio'),
+  PermissionInfo(Perm.dashboardMoney, 'Ver ingresos y totales (Inicio y Pagos)', 'Inicio'),
   PermissionInfo(Perm.attendanceCreate, 'Registrar entradas de clientes', 'Asistencia'),
   PermissionInfo(Perm.membersView, 'Ver clientes', 'Clientes'),
   PermissionInfo(Perm.membersEdit, 'Crear y editar clientes', 'Clientes'),
   PermissionInfo(Perm.membersDelete, 'Desactivar y eliminar clientes', 'Clientes'),
+  PermissionInfo(Perm.workoutsView, 'Ver los entrenos de los clientes', 'Entrenos'),
+  PermissionInfo(Perm.workoutsEdit, 'Registrar y editar entrenos', 'Entrenos'),
   PermissionInfo(Perm.paymentsView, 'Ver pagos e historial de cobros', 'Pagos'),
   PermissionInfo(Perm.paymentsCreate, 'Cobrar membresías', 'Pagos'),
   PermissionInfo(Perm.paymentsVoid, 'Anular pagos', 'Pagos'),
   PermissionInfo(Perm.storeSell, 'Vender en la tienda', 'Tienda'),
   PermissionInfo(Perm.salesVoid, 'Anular ventas', 'Tienda'),
-  PermissionInfo(Perm.inventoryView, 'Ver inventario y compras', 'Inventario'),
+  PermissionInfo(Perm.inventoryView, 'Ver productos y stock actual', 'Inventario'),
   PermissionInfo(Perm.inventoryManage, 'Productos, proveedores, compras y stock', 'Inventario'),
+  PermissionInfo(Perm.inventoryCost, 'Ver costos, márgenes y valor del inventario', 'Inventario'),
+  PermissionInfo(Perm.purchasesView, 'Ver compras y proveedores', 'Compras'),
   PermissionInfo(Perm.cashOwn, 'Ver su propia caja', 'Caja'),
   PermissionInfo(Perm.cashAll, 'Ver la caja de todos y el cierre Z', 'Caja'),
   PermissionInfo(Perm.plansManage, 'Crear y editar planes y precios', 'Planes'),
@@ -72,8 +80,8 @@ final defaultRolePermissions = <StaffRole, Set<String>>{
     for (final p in permissionCatalog)
       if (p.code != Perm.rolesManage) p.code,
   },
+  // Recepción no ve ingresos, caja, compras ni costos: solo el stock actual.
   StaffRole.reception: {
-    Perm.dashboardMoney,
     Perm.attendanceCreate,
     Perm.membersView,
     Perm.membersEdit,
@@ -81,16 +89,15 @@ final defaultRolePermissions = <StaffRole, Set<String>>{
     Perm.paymentsCreate,
     Perm.storeSell,
     Perm.inventoryView,
-    Perm.cashOwn,
   },
-  StaffRole.trainer: {Perm.attendanceCreate, Perm.membersView},
+  StaffRole.trainer: {Perm.attendanceCreate, Perm.membersView, Perm.workoutsView, Perm.workoutsEdit},
 };
 
 enum StaffRole {
   owner('owner', 'Dueño', 'Todo. Gestiona personal, roles y ajustes críticos.'),
   admin('admin', 'Administrador', 'Todo lo operativo y los reportes. Gestiona al personal, salvo a los dueños.'),
-  reception('reception', 'Recepción', 'Asistencia, clientes, cobros, tienda y su propia caja.'),
-  trainer('trainer', 'Entrenador', 'Asistencia y consulta de clientes, sin datos de pago.');
+  reception('reception', 'Recepción', 'Asistencia, clientes, cobros, tienda y stock. Sin ingresos, caja ni costos.'),
+  trainer('trainer', 'Entrenador', 'Asistencia, clientes y entrenos. Sin datos de pago.');
 
   const StaffRole(this.code, this.label, this.summary);
   final String code;

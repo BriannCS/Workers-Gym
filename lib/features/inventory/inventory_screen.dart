@@ -26,16 +26,20 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final products = ref.watch(productsProvider);
     final active = (products.value ?? const <Product>[]).where((p) => p.active);
     final lowCount = active.where((p) => p.lowStock).length;
-    final value = active.fold(0, (s, p) => s + p.stock * p.costCents);
+    // Recepción solo ve el stock: sin costos, márgenes ni proveedores.
+    final showCost = ref.watch(canProvider(Perm.inventoryCost));
+    final showSuppliers = ref.watch(canProvider(Perm.purchasesView)) || ref.watch(canProvider(Perm.inventoryManage));
+    final suppliersTab = _suppliersTab && showSuppliers;
+    final value = active.fold(0, (s, p) => s + p.stock * (p.costCents ?? 0));
 
     return PageBody(
       header: PageHeader(
         title: 'Inventario',
-        subtitle: 'Productos de la tienda y proveedores',
+        subtitle: showSuppliers ? 'Productos de la tienda y proveedores' : 'Stock actual de la tienda',
         actions: [
           if (!ref.watch(canProvider(Perm.inventoryManage)))
             const SizedBox.shrink()
-          else if (_suppliersTab)
+          else if (suppliersTab)
             FilledButton.icon(
                   onPressed: () => _showSupplierForm(context),
                   icon: const Icon(Icons.add, size: 18),
@@ -62,7 +66,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               _onlyLow = true;
             }),
           ),
-          Score(label: 'Valor del inventario', value: formatMoney(value), color: AppColors.info, caption: 'a precio de costo'),
+          if (showCost)
+            Score(label: 'Valor del inventario', value: formatMoney(value), color: AppColors.info, caption: 'a precio de costo')
+          else
+            Score(
+              label: 'Agotados',
+              value: '${active.where((p) => p.stock == 0).length}',
+              color: active.any((p) => p.stock == 0) ? AppColors.danger : AppColors.success,
+              caption: 'sin unidades',
+            ),
         ]),
         const SizedBox(height: 28),
         Wrap(
@@ -70,16 +82,17 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           runSpacing: 12,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('Productos'), icon: Icon(Icons.inventory_2_outlined)),
-                ButtonSegment(value: true, label: Text('Proveedores'), icon: Icon(Icons.local_shipping_outlined)),
-              ],
-              selected: {_suppliersTab},
-              onSelectionChanged: (s) => setState(() => _suppliersTab = s.first),
-              showSelectedIcon: false,
-            ),
-            if (!_suppliersTab)
+            if (showSuppliers)
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Productos'), icon: Icon(Icons.inventory_2_outlined)),
+                  ButtonSegment(value: true, label: Text('Proveedores'), icon: Icon(Icons.local_shipping_outlined)),
+                ],
+                selected: {suppliersTab},
+                onSelectionChanged: (s) => setState(() => _suppliersTab = s.first),
+                showSelectedIcon: false,
+              ),
+            if (!suppliersTab)
               FilterChip(
                 label: Text('Solo stock bajo  $lowCount'),
                 selected: _onlyLow,
@@ -88,16 +101,23 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        Panel(padding: EdgeInsets.zero, child: _suppliersTab ? const _SuppliersTable() : _ProductsTable(onlyLow: _onlyLow)),
+        Panel(
+          padding: EdgeInsets.zero,
+          child: suppliersTab
+              ? const _SuppliersTable()
+              : _ProductsTable(onlyLow: _onlyLow, showCost: showCost, showSupplier: showSuppliers),
+        ),
       ],
     );
   }
 }
 
 class _ProductsTable extends ConsumerWidget {
-  const _ProductsTable({required this.onlyLow});
+  const _ProductsTable({required this.onlyLow, required this.showCost, required this.showSupplier});
 
   final bool onlyLow;
+  final bool showCost;
+  final bool showSupplier;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -119,8 +139,22 @@ class _ProductsTable extends ConsumerWidget {
           builder: (context, c) => Column(
             children: [
               if (c.maxWidth >= 760)
-                const TableHeader(cells: [('Producto', 5), ('Proveedor', 3), ('Precio', 2), ('Costo', 2), ('Margen', 2), ('Stock', 3), ('', 2)]),
-              for (final p in visible) _ProductRow(product: p, compact: c.maxWidth < 760, canManage: ref.watch(canProvider(Perm.inventoryManage))),
+                TableHeader(cells: [
+                  ('Producto', 5),
+                  if (showSupplier) ('Proveedor', 3),
+                  ('Precio', 2),
+                  if (showCost) ...[('Costo', 2), ('Margen', 2)],
+                  ('Stock', 3),
+                  ('', 2),
+                ]),
+              for (final p in visible)
+                _ProductRow(
+                  product: p,
+                  compact: c.maxWidth < 760,
+                  canManage: ref.watch(canProvider(Perm.inventoryManage)),
+                  showCost: showCost,
+                  showSupplier: showSupplier,
+                ),
             ],
           ),
         );
@@ -130,17 +164,26 @@ class _ProductsTable extends ConsumerWidget {
 }
 
 class _ProductRow extends StatelessWidget {
-  const _ProductRow({required this.product, required this.compact, required this.canManage});
+  const _ProductRow({
+    required this.product,
+    required this.compact,
+    required this.canManage,
+    required this.showCost,
+    required this.showSupplier,
+  });
 
   final Product product;
   final bool compact;
   final bool canManage;
+  final bool showCost;
+  final bool showSupplier;
 
   @override
   Widget build(BuildContext context) {
     final p = product;
     final muted = AppText.mono(size: 12.5, color: AppColors.textMuted);
-    final margin = p.priceCents == 0 ? null : (p.priceCents - p.costCents) / p.priceCents * 100;
+    final cost = showCost ? p.costCents : null;
+    final margin = p.priceCents == 0 || cost == null ? null : (p.priceCents - cost) / p.priceCents * 100;
     final stockColor = p.stock == 0 ? AppColors.danger : (p.lowStock ? AppColors.warning : AppColors.success);
     final stock = Text('${p.stock}', style: AppText.score(26, color: stockColor));
     final actions = [
@@ -173,7 +216,14 @@ class _ProductRow extends StatelessWidget {
                 children: [
                   name,
                   const SizedBox(height: 4),
-                  Text('${formatMoney(p.priceCents)} · costo ${formatMoney(p.costCents)} · ${p.supplierName ?? 'sin proveedor'}', style: muted),
+                  Text(
+                    [
+                      formatMoney(p.priceCents),
+                      if (cost != null) 'costo ${formatMoney(cost)}',
+                      if (showSupplier) p.supplierName ?? 'sin proveedor',
+                    ].join(' · '),
+                    style: muted,
+                  ),
                 ],
               ),
             ),
@@ -190,10 +240,12 @@ class _ProductRow extends StatelessWidget {
         child: Row(
           children: [
             Expanded(flex: 5, child: name),
-            Expanded(flex: 3, child: Text(p.supplierName ?? '—', style: muted, overflow: TextOverflow.ellipsis)),
+            if (showSupplier) Expanded(flex: 3, child: Text(p.supplierName ?? '—', style: muted, overflow: TextOverflow.ellipsis)),
             Expanded(flex: 2, child: Text(formatMoney(p.priceCents), style: AppText.mono(size: 13.5, weight: FontWeight.w600))),
-            Expanded(flex: 2, child: Text(formatMoney(p.costCents), style: muted)),
-            Expanded(flex: 2, child: Text(margin == null ? '—' : '${margin.toStringAsFixed(0)}%', style: muted)),
+            if (showCost) ...[
+              Expanded(flex: 2, child: Text(cost == null ? '—' : formatMoney(cost), style: muted)),
+              Expanded(flex: 2, child: Text(margin == null ? '—' : '${margin.toStringAsFixed(0)}%', style: muted)),
+            ],
             Expanded(flex: 3, child: Align(alignment: Alignment.centerLeft, child: stock)),
             Expanded(flex: 2, child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions)),
           ],
@@ -326,7 +378,8 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
           name: _name.text.trim(),
           sku: _opt(_sku),
           priceCents: parseMoney(_price.text)!,
-          costCents: parseMoney(_cost.text.isEmpty ? '0' : _cost.text)!,
+          // Sin permiso de costos no se envía: el costo guardado no cambia.
+          costCents: ref.read(canProvider(Perm.inventoryCost)) ? parseMoney(_cost.text.isEmpty ? '0' : _cost.text)! : null,
           minStock: int.parse(_min.text),
           supplierId: _supplierId,
           active: _active,
@@ -402,6 +455,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                     validator: money,
                   ),
                 ),
+                if (ref.watch(canProvider(Perm.inventoryCost)))
                 Expanded(
                   child: TextFormField(
                     controller: _cost,

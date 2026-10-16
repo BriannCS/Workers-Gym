@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart' show ImageProvider, MemoryImage;
 
 import '../domain/models.dart';
 import '../domain/staff.dart';
+import '../domain/workouts.dart';
 import 'gym_repository.dart';
 
 /// Repositorio en memoria con datos de ejemplo. Se usa cuando no hay
@@ -28,6 +29,7 @@ class DemoGymRepository implements GymRepository {
   final _products = <Product>[];
   final _sales = <Sale>[];
   final _purchases = <Purchase>[];
+  final _workouts = <WorkoutLog>[];
 
   /// Stock inicial y ajustes (equivale a `stock_entries`).
   final _stockEntries = <(String productId, int quantity)>[];
@@ -254,6 +256,36 @@ class DemoGymRepository implements GymRepository {
       final at = todayStart.add(Duration(minutes: 35 * i + 7));
       if (at.isBefore(_now)) {
         _attendance.add(Attendance(id: _id(), memberId: m.id, memberName: m.fullName, checkedInAt: at));
+      }
+    }
+
+    // Entrenos de ejemplo: una rutina dividida (empuje / tirón / pierna) para
+    // los primeros clientes, anotada por el entrenador.
+    const split = [
+      ([BodyPart.pecho, BodyPart.hombros, BodyPart.triceps], [WorkoutType.hipertrofia], 'Press banca 4x8, militar 3x10, fondos'),
+      ([BodyPart.espalda, BodyPart.biceps], [WorkoutType.hipertrofia], 'Dominadas asistidas, remo con barra 4x10'),
+      ([BodyPart.cuadriceps, BodyPart.gluteos, BodyPart.pantorrillas], [WorkoutType.fuerza], 'Sentadilla 5x5, prensa, gemelos'),
+      ([BodyPart.abdomen], [WorkoutType.cardio, WorkoutType.hiit], 'Circuito 20 min + plancha'),
+    ];
+    final trainer = _staff.firstWhere((s) => s.userId == trainerId);
+    for (final (i, m) in _members.take(4).indexed) {
+      for (var k = 0; k < 6; k++) {
+        final (parts, types, notes) = split[(i + k) % split.length];
+        final day = _today.subtract(Duration(days: k * 2 + i));
+        _workouts.add(WorkoutLog(
+          id: _id(),
+          memberId: m.id,
+          memberName: m.fullName,
+          trainedOn: day,
+          bodyParts: parts,
+          types: types,
+          durationMin: 50 + 5 * (k % 3),
+          effort: 2 + (k + i) % 3,
+          notes: notes,
+          createdBy: trainerId,
+          trainerName: trainer.fullName,
+          createdAt: day.add(const Duration(hours: 15)),
+        ));
       }
     }
   }
@@ -535,8 +567,25 @@ class DemoGymRepository implements GymRepository {
   }
 
   @override
-  Future<List<Product>> products() async => _products.map(_withSupplier).toList()
-    ..sort((a, b) => a.active != b.active ? (a.active ? -1 : 1) : a.name.compareTo(b.name));
+  Future<List<Product>> products() async {
+    final showCost = _can(Perm.inventoryCost);
+    return [
+      for (final p in _products.map(_withSupplier))
+        showCost
+            ? p
+            : Product(
+                id: p.id,
+                name: p.name,
+                sku: p.sku,
+                priceCents: p.priceCents,
+                stock: p.stock,
+                minStock: p.minStock,
+                supplierId: p.supplierId,
+                supplierName: p.supplierName,
+                active: p.active,
+              ),
+    ]..sort((a, b) => a.active != b.active ? (a.active ? -1 : 1) : a.name.compareTo(b.name));
+  }
 
   @override
   Future<String> saveProduct(ProductInput input, {String? id}) async {
@@ -550,7 +599,7 @@ class DemoGymRepository implements GymRepository {
       name: input.name,
       sku: input.sku,
       priceCents: input.priceCents,
-      costCents: input.costCents,
+      costCents: input.costCents ?? (i < 0 ? 0 : _products[i].costCents),
       stock: i < 0 ? 0 : _products[i].stock,
       minStock: input.minStock,
       supplierId: input.supplierId,
@@ -639,7 +688,7 @@ class DemoGymRepository implements GymRepository {
   // Compras
 
   @override
-  Future<List<Purchase>> purchases({DateTime? from, DateTime? to, int limit = 200}) async => !_can(Perm.inventoryView)
+  Future<List<Purchase>> purchases({DateTime? from, DateTime? to, int limit = 200}) async => !_can(Perm.purchasesView)
       ? <Purchase>[]
       : (_purchases
           .where((p) => _inRange(p.purchasedOn, from == null ? null : dateOnly(from), to == null ? null : dateOnly(to)))
@@ -700,6 +749,73 @@ class DemoGymRepository implements GymRepository {
       _setStock(productId, (s) => s - q);
     }
     _purchases[i] = _purchases[i].voidedWith(reason.trim(), clock());
+  }
+
+  // -------------------------------------------------------------------------
+  // Entrenos (mismas reglas que guard_workout_logs)
+
+  @override
+  Future<List<WorkoutLog>> workouts({String? memberId, DateTime? from, int limit = 300}) async {
+    if (!_can(Perm.workoutsView)) return const [];
+    final list = _workouts
+        .where((w) => (memberId == null || w.memberId == memberId) && (from == null || !w.trainedOn.isBefore(dateOnly(from))))
+        .map((w) => WorkoutLog(
+              id: w.id,
+              memberId: w.memberId,
+              memberName: _members.where((m) => m.id == w.memberId).firstOrNull?.fullName,
+              trainedOn: w.trainedOn,
+              bodyParts: w.bodyParts,
+              types: w.types,
+              durationMin: w.durationMin,
+              effort: w.effort,
+              notes: w.notes,
+              createdBy: w.createdBy,
+              trainerName: w.trainerName,
+              createdAt: w.createdAt,
+            ))
+        .toList()
+      ..sort((a, b) => a.trainedOn != b.trainedOn ? b.trainedOn.compareTo(a.trainedOn) : b.createdAt.compareTo(a.createdAt));
+    return list.take(limit).toList();
+  }
+
+  void _assertOwnWorkout(WorkoutLog w) {
+    if (w.createdBy != currentUserId && !{StaffRole.owner, StaffRole.admin}.contains(_me.role)) {
+      throw const GymException('Solo puedes editar los entrenos que registraste tú');
+    }
+  }
+
+  @override
+  Future<String> saveWorkout(WorkoutInput input, {String? id}) async {
+    _require(Perm.workoutsEdit);
+    if (!input.hasContent) throw const GymException('Marca al menos una parte del cuerpo, un tipo de entreno o una nota');
+    if (!_members.any((m) => m.id == input.memberId)) throw const GymException('El cliente no existe');
+    final i = _workouts.indexWhere((w) => w.id == id);
+    final prev = i < 0 ? null : _workouts[i];
+    if (prev != null) _assertOwnWorkout(prev);
+    final w = WorkoutLog(
+      id: prev?.id ?? _id(),
+      memberId: input.memberId,
+      trainedOn: dateOnly(input.trainedOn),
+      bodyParts: input.bodyParts,
+      types: input.types,
+      durationMin: input.durationMin,
+      effort: input.effort,
+      notes: (input.notes ?? '').trim().isEmpty ? null : input.notes!.trim(),
+      createdBy: prev?.createdBy ?? currentUserId,
+      trainerName: prev?.trainerName ?? _me.fullName,
+      createdAt: prev?.createdAt ?? clock(),
+    );
+    prev == null ? _workouts.add(w) : _workouts[i] = w;
+    return w.id;
+  }
+
+  @override
+  Future<void> deleteWorkout(String id) async {
+    _require(Perm.workoutsEdit);
+    final i = _workouts.indexWhere((w) => w.id == id);
+    if (i < 0) throw const GymException('El entreno no existe');
+    _assertOwnWorkout(_workouts[i]);
+    _workouts.removeAt(i);
   }
 
   // -------------------------------------------------------------------------

@@ -40,12 +40,15 @@ class PaymentsScreen extends ConsumerWidget {
         ],
       ),
       children: [
-        ScoreBoard(scores: [
-          Score(label: 'Hoy', value: formatMoney(total(todays)), caption: '${todays.length} pagos', color: AppColors.plateBlue),
-          Score(label: 'Este mes', value: formatMoney(total(thisMonth)), caption: '${thisMonth.length} pagos', color: AppColors.success),
-          Score(label: 'Mes anterior', value: formatMoney(total(lastMonth)), caption: '${lastMonth.length} pagos'),
-        ]),
-        const SizedBox(height: 28),
+        // Los totales son ingresos: solo con permiso (recepción no los ve).
+        if (ref.watch(canProvider(Perm.dashboardMoney))) ...[
+          ScoreBoard(scores: [
+            Score(label: 'Hoy', value: formatMoney(total(todays)), caption: '${todays.length} pagos', color: AppColors.plateBlue),
+            Score(label: 'Este mes', value: formatMoney(total(thisMonth)), caption: '${thisMonth.length} pagos', color: AppColors.success),
+            Score(label: 'Mes anterior', value: formatMoney(total(lastMonth)), caption: '${lastMonth.length} pagos'),
+          ]),
+          const SizedBox(height: 28),
+        ],
         Panel(
           title: 'Asientos',
           padding: EdgeInsets.zero,

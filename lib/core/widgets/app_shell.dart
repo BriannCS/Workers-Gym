@@ -62,7 +62,7 @@ class AppShell extends ConsumerWidget {
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Spine(location: location, compact: !context.isDesktop, sync: sync),
+          _Spine(location: location, collapsed: ref.watch(spineCollapsedProvider) ?? !context.isDesktop, sync: sync),
           Expanded(child: content),
         ],
       ),
@@ -79,12 +79,12 @@ class _Paper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Stack(
-        fit: StackFit.expand,
-        children: [
-          const RepaintBoundary(child: CustomPaint(painter: _DotGridPainter())),
-          child,
-        ],
-      );
+    fit: StackFit.expand,
+    children: [
+      const RepaintBoundary(child: CustomPaint(painter: _DotGridPainter())),
+      child,
+    ],
+  );
 }
 
 class _DotGridPainter extends CustomPainter {
@@ -187,9 +187,16 @@ class _SyncIndicatorState extends State<SyncIndicator> with SingleTickerProvider
               Container(
                 width: 6 + 8 * _pulse.value,
                 height: 6 + 8 * _pulse.value,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: .45 * (1 - _pulse.value))),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: .45 * (1 - _pulse.value)),
+                ),
               ),
-            Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+            ),
           ],
         ),
       ),
@@ -221,97 +228,167 @@ class _SyncIndicatorState extends State<SyncIndicator> with SingleTickerProvider
 // ---------------------------------------------------------------------------
 // Escritorio / tableta: lomo de tinta
 
-class _Spine extends ConsumerWidget {
-  const _Spine({required this.location, required this.compact, required this.sync});
+/// Menú lateral contraído o abierto. null = automático (contraído en tableta,
+/// abierto en escritorio). Es una preferencia de cada dispositivo.
+class SpineCollapsedController extends Notifier<bool?> {
+  static const _key = 'spine_collapsed';
+
+  @override
+  bool? build() => ref.watch(sharedPrefsProvider)?.getBool(_key);
+
+  void set(bool collapsed) {
+    state = collapsed;
+    ref.read(sharedPrefsProvider)?.setBool(_key, collapsed);
+  }
+}
+
+final spineCollapsedProvider = NotifierProvider<SpineCollapsedController, bool?>(SpineCollapsedController.new);
+
+/// Lomo de tinta con las pestañas. Se contrae y se abre con una animación: el
+/// contenido completo se recorta mientras el ancho cambia, y al quedar
+/// contraído aparecen los iconos.
+class _Spine extends ConsumerStatefulWidget {
+  const _Spine({required this.location, required this.collapsed, required this.sync});
 
   final String location;
-  final bool compact;
+  final bool collapsed;
   final SyncStatus sync;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final supabase = ref.watch(supabaseClientProvider);
+  ConsumerState<_Spine> createState() => _SpineState();
+}
+
+class _SpineState extends ConsumerState<_Spine> with SingleTickerProviderStateMixin {
+  static const _wide = 244.0;
+  static const _narrow = 88.0;
+
+  late final _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 300), value: widget.collapsed ? 0 : 1);
+
+  @override
+  void didUpdateWidget(_Spine old) {
+    super.didUpdateWidget(old);
+    if (old.collapsed != widget.collapsed) widget.collapsed ? _anim.reverse() : _anim.forward();
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  void _toggle() => ref.read(spineCollapsedProvider.notifier).set(!widget.collapsed);
+
+  @override
+  Widget build(BuildContext context) {
     final access = ref.watch(currentStaffProvider).value;
-    final staffName = access?.fullName;
+    final sections = AppSection.values.where((s) => s.allowedFor(access)).toList();
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (context, _) {
+        final t = Curves.easeInOutCubic.transform(_anim.value);
+        final full = _anim.value > 0;
+        final content = full
+            ? Opacity(opacity: const Interval(.3, 1).transform(t), child: _content(sections, compact: false))
+            : TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 180),
+                builder: (context, o, child) => Opacity(opacity: o, child: child),
+                child: _content(sections, compact: true),
+              );
+        return Container(
+          width: _narrow + (_wide - _narrow) * t,
+          color: AppColors.spine,
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.centerLeft,
+              minWidth: full ? _wide : _narrow,
+              maxWidth: full ? _wide : _narrow,
+              child: content,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _content(List<AppSection> sections, {required bool compact}) {
     final paperDim = AppColors.onSpine.withValues(alpha: .6);
-    return Container(
-      width: compact ? 88 : 244,
-      color: AppColors.spine,
-      child: SafeArea(
-        right: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(compact ? 0 : 22, 24, 0, 28),
-              child: compact
-                  ? const Center(child: BrandMark(size: 44))
-                  : Row(
-                      children: [
-                        const BrandMark(size: 44),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(Env.gymName.toUpperCase(),
-                                  overflow: TextOverflow.ellipsis, style: AppText.score(26, color: AppColors.onSpine)),
-                              Text('WORKERS RECEPCIÓN', style: AppText.label.copyWith(color: paperDim, fontSize: 9.5)),
-                            ],
-                          ),
+    final toggle = IconButton(
+      tooltip: compact ? 'Abrir menú' : 'Contraer menú',
+      onPressed: _toggle,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+      icon: Icon(compact ? Icons.keyboard_double_arrow_right : Icons.keyboard_double_arrow_left, size: 18, color: paperDim),
+    );
+    return SafeArea(
+      right: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(compact ? 0 : 18, 24, compact ? 0 : 4, compact ? 12 : 28),
+            child: compact
+                ? Column(children: [const BrandMark(size: 44), const SizedBox(height: 8), toggle])
+                : Row(
+                    children: [
+                      const BrandMark(size: 42),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(Env.gymName.toUpperCase(), maxLines: 1, style: AppText.score(26, color: AppColors.onSpine)),
+                            ),
+                            Text('WORKERS RECEPCIÓN', style: AppText.label.copyWith(color: paperDim, fontSize: 9.5)),
+                          ],
                         ),
-                      ],
-                    ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final s in AppSection.values.where((s) => s.allowedFor(access)))
-                      _SpineTab(section: s, selected: s.path == location, compact: compact),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(compact ? 0 : 22, 12, compact ? 0 : 16, 20),
+                      ),
+                      toggle,
+                    ],
+                  ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
               child: Column(
-                crossAxisAlignment: compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (compact) ...[
-                    const ClockButton(onSpine: true, compact: true),
-                    const ThemeToggle(onSpine: true),
-                    const SizedBox(height: 8),
-                    SyncIndicator(status: sync, onDark: true, showLabel: false),
-                  ] else ...[
-                    const ClockButton(onSpine: true),
-                    const SizedBox(height: 10),
-                    const DemoRoleSwitcher(onSpine: true),
-                    Row(
-                      children: [
-                        Expanded(child: SyncIndicator(status: sync, onDark: true)),
-                        const ThemeToggle(onSpine: true),
-                      ],
-                    ),
-                  ],
-                  if (supabase != null) ...[
-                    const SizedBox(height: 14),
-                    _SignOut(
-                      compact: compact,
-                      name: staffName ?? supabase.auth.currentUser?.email ?? 'Recepción',
-                      onTap: () => supabase.auth.signOut(),
-                    ),
-                  ],
-                  if (!compact) ...[
-                    const SizedBox(height: 16),
-                    BrandSignature(color: paperDim, size: 9),
-                  ],
+                  for (final (i, s) in sections.indexed)
+                    _SpineTab(section: s, number: i + 1, selected: s.path == widget.location, compact: compact),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(compact ? 0 : 18, 12, compact ? 0 : 14, 18),
+            child: Column(
+              crossAxisAlignment: compact ? CrossAxisAlignment.center : CrossAxisAlignment.stretch,
+              children: [
+                if (compact) ...[
+                  const StaffCard(onSpine: true, compact: true),
+                  const SizedBox(height: 10),
+                  const ThemeToggle(onSpine: true),
+                  const SizedBox(height: 6),
+                  SyncIndicator(status: widget.sync, onDark: true, showLabel: false),
+                ] else ...[
+                  Container(height: 1, color: AppColors.onSpine.withValues(alpha: .12), margin: const EdgeInsets.only(bottom: 8)),
+                  const StaffCard(onSpine: true),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(child: SyncIndicator(status: widget.sync, onDark: true)),
+                      const ThemeToggle(onSpine: true),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  BrandSignature(color: paperDim, size: 9),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -320,15 +397,18 @@ class _Spine extends ConsumerWidget {
 /// Pestaña de cuaderno: la activa toma el color del papel y se funde con la
 /// página, como un separador asomando del borde.
 class _SpineTab extends StatelessWidget {
-  const _SpineTab({required this.section, required this.selected, required this.compact});
+  const _SpineTab({required this.section, required this.number, required this.selected, required this.compact});
 
   final AppSection section;
+
+  /// Posición entre las pestañas visibles para este rol (sin saltos).
+  final int number;
   final bool selected;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final number = (section.index + 1).toString().padLeft(2, '0');
+    final number = this.number.toString().padLeft(2, '0');
     final fg = selected ? AppColors.ink : AppColors.onSpine.withValues(alpha: .78);
     final tab = Padding(
       padding: EdgeInsets.only(left: compact ? 10 : 14, bottom: 2),
@@ -340,7 +420,7 @@ class _SpineTab extends StatelessWidget {
           hoverColor: Colors.white.withValues(alpha: .06),
           borderRadius: const BorderRadius.horizontal(left: Radius.circular(AppTheme.radius)),
           child: SizedBox(
-            height: compact ? 58 : 46,
+            height: compact ? 52 : 46,
             child: compact
                 ? Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -355,7 +435,10 @@ class _SpineTab extends StatelessWidget {
                       const SizedBox(width: 12),
                       SizedBox(
                         width: 26,
-                        child: Text(number, style: AppText.mono(size: 11.5, color: selected ? AppColors.plateBlue : fg.withValues(alpha: .55))),
+                        child: Text(
+                          number,
+                          style: AppText.mono(size: 11.5, color: selected ? AppColors.plateBlue : fg.withValues(alpha: .55)),
+                        ),
                       ),
                       Expanded(
                         child: Text(
@@ -380,43 +463,6 @@ class _SpineTab extends StatelessWidget {
   }
 }
 
-class _SignOut extends StatelessWidget {
-  const _SignOut({required this.compact, required this.name, required this.onTap});
-
-  final bool compact;
-  final String name;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final dim = AppColors.onSpine.withValues(alpha: .6);
-    if (compact) {
-      return IconButton(
-        tooltip: '$name · Cerrar sesión',
-        onPressed: onTap,
-        icon: Icon(Icons.logout, color: dim, size: 20),
-      );
-    }
-    return InkWell(
-      onTap: onTap,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.onSpine, fontWeight: FontWeight.w600, fontSize: 13)),
-                Text('CERRAR SESIÓN', style: AppText.label.copyWith(color: dim, fontSize: 10)),
-              ],
-            ),
-          ),
-          Icon(Icons.logout, color: dim, size: 18),
-        ],
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Teléfono
 
@@ -438,7 +484,9 @@ class _PhoneTopBar extends StatelessWidget {
         children: [
           const BrandMark(size: 34),
           const SizedBox(width: 10),
-          Expanded(child: Text(Env.gymName.toUpperCase(), style: AppText.score(24), overflow: TextOverflow.ellipsis)),
+          Expanded(
+            child: Text(Env.gymName.toUpperCase(), style: AppText.score(24), overflow: TextOverflow.ellipsis),
+          ),
           SyncIndicator(status: sync),
           const ThemeToggle(),
         ],
@@ -456,7 +504,7 @@ class _PhoneTabBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final access = ref.watch(currentStaffProvider).value;
     final current = AppSection.at(location);
-    final bar = AppSection.values.where((s) => s.onPhoneBar && s.allowedFor(access)).toList();
+    final bar = AppSection.phoneBar(access);
     final moreSelected = current != null && !bar.contains(current);
     Widget item({required IconData icon, required String label, required bool selected, required VoidCallback onTap}) {
       final fg = selected ? AppColors.onSpine : AppColors.onSpine.withValues(alpha: .6);
@@ -485,13 +533,15 @@ class _PhoneTabBar extends ConsumerWidget {
           height: 64,
           child: Row(
             children: [
-              for (final s in bar)
-                item(icon: s.icon, label: s.label, selected: s == current, onTap: () => context.go(s.path)),
+              for (final s in bar) item(icon: s.icon, label: s.label, selected: s == current, onTap: () => context.go(s.path)),
               item(
                 icon: Icons.more_horiz,
                 label: moreSelected ? current.label : 'Más',
                 selected: moreSelected,
-                onTap: () => showModalBottomSheet<void>(context: context, builder: (_) => _MoreSheet(location: location)),
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  builder: (_) => _MoreSheet(location: location),
+                ),
               ),
             ],
           ),
@@ -517,9 +567,8 @@ class _MoreSheet extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(padding: EdgeInsets.fromLTRB(4, 4, 4, 8), child: ClockButton()),
-            const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: DemoRoleSwitcher()),
-            for (final s in AppSection.values.where((s) => !s.onPhoneBar && s.allowedFor(access)))
+            const Padding(padding: EdgeInsets.fromLTRB(4, 8, 4, 8), child: StaffCard()),
+            for (final s in AppSection.values.where((s) => !AppSection.phoneBar(access).contains(s) && s.allowedFor(access)))
               ListTile(
                 leading: Icon(s.icon, color: AppColors.ink),
                 title: Text(s.label.toUpperCase(), style: AppText.score(24)),
@@ -563,7 +612,8 @@ class _NoAccess extends StatelessWidget {
           child: EmptyState(
             icon: Icons.lock_outline,
             title: 'Tu cuenta no tiene acceso',
-            message: '${supabase?.auth.currentUser?.email ?? 'Esta cuenta'} no está registrada como personal del gimnasio. '
+            message:
+                '${supabase?.auth.currentUser?.email ?? 'Esta cuenta'} no está registrada como personal del gimnasio. '
                 'Pide al administrador que te agregue.',
             action: OutlinedButton(onPressed: () => supabase?.auth.signOut(), child: const Text('Cerrar sesión')),
           ),

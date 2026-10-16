@@ -19,6 +19,7 @@ import '../../features/purchases/purchases_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/staff/staff_screen.dart';
 import '../../features/store/store_screen.dart';
+import '../../features/workouts/workouts_screen.dart';
 import '../theme/theme_mode.dart';
 import '../widgets/app_shell.dart';
 
@@ -29,10 +30,11 @@ enum AppSection {
   dashboard('/', 'Inicio', Icons.space_dashboard_outlined, onPhoneBar: true),
   attendance('/asistencia', 'Asistencia', Icons.how_to_reg_outlined, onPhoneBar: true, anyOf: [Perm.attendanceCreate]),
   members('/clientes', 'Clientes', Icons.group_outlined, onPhoneBar: true, anyOf: [Perm.membersView]),
+  workouts('/entrenos', 'Entrenos', Icons.fitness_center, onPhoneBar: true, anyOf: [Perm.workoutsView]),
   payments('/pagos', 'Pagos', Icons.receipt_long_outlined, anyOf: [Perm.paymentsView]),
   store('/tienda', 'Tienda', Icons.storefront_outlined, onPhoneBar: true, anyOf: [Perm.storeSell]),
   inventory('/inventario', 'Inventario', Icons.inventory_2_outlined, anyOf: [Perm.inventoryView]),
-  purchases('/compras', 'Compras', Icons.local_shipping_outlined, anyOf: [Perm.inventoryView]),
+  purchases('/compras', 'Compras', Icons.local_shipping_outlined, anyOf: [Perm.purchasesView]),
   cash('/caja', 'Caja', Icons.point_of_sale_outlined, anyOf: [Perm.cashOwn, Perm.cashAll]),
   plans('/planes', 'Planes', Icons.style_outlined, anyOf: [Perm.paymentsCreate, Perm.plansManage]),
   staff('/personal', 'Personal', Icons.badge_outlined, anyOf: [Perm.staffView]),
@@ -49,10 +51,19 @@ enum AppSection {
 
   static AppSection? at(String location) => values.where((s) => s.path == location).firstOrNull;
 
+  /// Barra inferior del teléfono: máximo 4 secciones (más "Más"). Si sobran,
+  /// Entrenos cede su lugar (quien vende usa más la tienda).
+  static List<AppSection> phoneBar(StaffAccess? access) {
+    final bar = values.where((s) => s.onPhoneBar && s.allowedFor(access)).toList();
+    if (bar.length > 4) bar.remove(workouts);
+    return bar.take(4).toList();
+  }
+
   Widget get screen => switch (this) {
         dashboard => const DashboardScreen(),
         attendance => const AttendanceScreen(),
         members => const MembersScreen(),
+        workouts => const WorkoutsScreen(),
         payments => const PaymentsScreen(),
         store => const StoreScreen(),
         inventory => const InventoryScreen(),
