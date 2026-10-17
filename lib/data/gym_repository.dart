@@ -19,6 +19,7 @@ abstract interface class GymRepository {
   Future<Member> createMember(MemberInput input);
   Future<void> updateMember(String id, MemberInput input);
   Future<void> setMemberActive(String id, bool active);
+
   /// Lo saca de la planilla; sus pagos, ventas y asistencias se conservan.
   Future<void> deleteMember(Member member);
 
@@ -33,11 +34,13 @@ abstract interface class GymRepository {
   Future<List<PaymentMethod>> paymentMethods();
   Future<void> addPaymentMethod(String name, Currency currency);
   Future<void> setPaymentMethodActive(String code, bool active);
+  Future<void> setPaymentMethodRequiresReference(String code, bool requires);
 
   Future<GymSettings> settings();
   Future<void> saveSettings(GymSettings settings);
 
   Future<List<Payment>> payments({String? memberId, DateTime? from, DateTime? to, int limit = 300});
+
   /// Devuelve el pago con el periodo definitivo calculado por el backend.
   Future<Payment> addPayment(NewPayment payment);
   Future<void> voidPayment(String id, String reason);
@@ -49,18 +52,36 @@ abstract interface class GymRepository {
   Future<void> saveSupplier(SupplierInput input, {String? id});
 
   Future<List<Product>> products();
+
   /// Devuelve el id del producto (nuevo o existente).
   Future<String> saveProduct(ProductInput input, {String? id});
+
   /// Stock inicial o ajuste (cantidad > 0 suma, < 0 resta). Devuelve el nuevo stock.
   Future<int> addStock(String productId, int quantity, {int? unitCostCents, String? note});
 
   Future<List<Sale>> sales({DateTime? from, DateTime? to, int limit = 200});
-  Future<String> registerSale(List<CartLine> lines, PaymentMethod method, {String? memberId, ExchangeRate? rate});
+  Future<String> registerSale(
+    List<CartLine> lines,
+    PaymentMethod method, {
+    String? memberId,
+    ExchangeRate? rate,
+    ProofInput proof = const ProofInput(),
+  });
   Future<void> voidSale(String id, String reason);
 
   Future<List<Purchase>> purchases({DateTime? from, DateTime? to, int limit = 200});
   Future<String> registerPurchase(NewPurchase purchase);
   Future<void> voidPurchase(String id, String reason);
+
+  // Comprobantes de pago (pago móvil, transferencia…)
+  /// Sube la foto y la asocia al cobro o venta [id]. Devuelve la ruta.
+  Future<String> attachReceipt(ProofKind kind, String id, Uint8List bytes, {String mimeType = 'image/jpeg'});
+
+  /// Imagen lista para mostrar (URL firmada en Supabase).
+  Future<ImageProvider> receiptImage(String path);
+
+  /// Marca (o desmarca) el pago como confirmado contra el banco.
+  Future<void> setPaymentVerified(ProofKind kind, String id, bool verified);
 
   // Entrenos
   Future<List<WorkoutLog>> workouts({String? memberId, DateTime? from, int limit = 300});
@@ -83,39 +104,42 @@ abstract interface class GymRepository {
   Future<List<StaffShift>> shifts(String userId);
   Future<void> saveShifts(String userId, List<StaffShift> shifts);
   Future<List<StaffTimeEntry>> timeEntries({String? userId, required DateTime from});
+
   /// Marca entrada o salida de quien tiene la sesión. Devuelve la jornada.
   Future<StaffTimeEntry> clockInOut();
   Future<List<AuditEntry>> auditLog({int limit = 200});
 }
 
 String friendlyError(Object e) => switch (e) {
-      PostgrestException(code: '23505') => 'Ya existe un registro con ese dato único (cédula o código).',
-      PostgrestException(code: '42501', :final message) when message.startsWith('Tu rol') || message.startsWith('Solo') || message.startsWith('No puedes') =>
-        message.startsWith('Tu rol') ? 'Tu rol no tiene permiso para esta acción.' : message,
-      PostgrestException(code: '42501') => 'Tu usuario no tiene permiso para esta acción.',
-      PostgrestException(code: '23514', :final message) when message.contains('dueño') => message,
-      // Reglas de formato del servidor (cédula, teléfono, correo, largos).
-      PostgrestException(code: '23514', :final message) => switch (message) {
-          _ when message.contains('document') => 'La cédula debe ser V o E seguida de 6 a 9 dígitos.',
-          _ when message.contains('phone') => 'El teléfono debe tener 10 u 11 dígitos.',
-          _ when message.contains('email') => 'El correo no es válido.',
-          _ => 'Algún dato no es válido o es demasiado largo.',
-        },
-      PostgrestException(:final message) => message,
-      StorageException(:final message) => 'No se pudo guardar la foto: $message',
-      AuthRetryableFetchException() => 'Sin conexión con el servidor. Revisa internet e intenta de nuevo.',
-      AuthException(:final message) => message,
-      // http.ClientException (web y móvil) y SocketException (móvil) = sin red.
-      _ when '$e'.contains('ClientException') || '$e'.contains('SocketException') || '$e'.contains('Failed to fetch') =>
-        'Sin conexión con el servidor. Revisa internet e intenta de nuevo.',
-      _ => '$e',
-    };
+  PostgrestException(code: '23505') => 'Ya existe un registro con ese dato único (cédula o código).',
+  PostgrestException(code: '42501', :final message)
+      when message.startsWith('Tu rol') || message.startsWith('Solo') || message.startsWith('No puedes') =>
+    message.startsWith('Tu rol') ? 'Tu rol no tiene permiso para esta acción.' : message,
+  PostgrestException(code: '42501') => 'Tu usuario no tiene permiso para esta acción.',
+  PostgrestException(code: '23514', :final message) when message.contains('dueño') => message,
+  // Reglas de formato del servidor (cédula, teléfono, correo, largos).
+  PostgrestException(code: '23514', :final message) => switch (message) {
+    _ when message.contains('document') => 'La cédula debe ser V o E seguida de 6 a 9 dígitos.',
+    _ when message.contains('phone') => 'El teléfono debe tener 10 u 11 dígitos.',
+    _ when message.contains('email') => 'El correo no es válido.',
+    _ => 'Algún dato no es válido o es demasiado largo.',
+  },
+  PostgrestException(:final message) => message,
+  StorageException(:final message) => 'No se pudo guardar la foto: $message',
+  AuthRetryableFetchException() => 'Sin conexión con el servidor. Revisa internet e intenta de nuevo.',
+  AuthException(:final message) => message,
+  // http.ClientException (web y móvil) y SocketException (móvil) = sin red.
+  _ when '$e'.contains('ClientException') || '$e'.contains('SocketException') || '$e'.contains('Failed to fetch') =>
+    'Sin conexión con el servidor. Revisa internet e intenta de nuevo.',
+  _ => '$e',
+};
 
 class SupabaseGymRepository implements GymRepository {
   SupabaseGymRepository(this._db);
   final SupabaseClient _db;
 
   static const _photoBucket = 'member-photos';
+  static const _receiptBucket = 'payment-receipts';
   static const _paymentSelect = '*, members(full_name), plans(name), payment_methods(name)';
   // Sin costos: products.cost_cents y sale_items.unit_cost_cents no se pueden
   // leer directo; los costos llegan por product_costs() solo con permiso.
@@ -123,7 +147,7 @@ class SupabaseGymRepository implements GymRepository {
       '*, members(full_name), payment_methods(name), sale_items(id, sale_id, product_id, quantity, unit_price_cents, products(name))';
   static const _productSelect = 'id, name, sku, price_cents, stock, min_stock, supplier_id, active, suppliers(name)';
   static const _workoutSelect = '*, members(full_name)';
-  static const _purchaseSelect = '*, suppliers(name), purchase_items(*, products(name))';
+  static const _purchaseSelect = '*, suppliers(name), payment_methods(name), purchase_items(*, products(name))';
 
   @override
   Future<List<Member>> members() async {
@@ -138,12 +162,10 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<void> updateMember(String id, MemberInput input) =>
-      _db.from('members').update(input.toJson()).eq('id', id);
+  Future<void> updateMember(String id, MemberInput input) => _db.from('members').update(input.toJson()).eq('id', id);
 
   @override
-  Future<void> setMemberActive(String id, bool active) =>
-      _db.from('members').update({'active': active}).eq('id', id);
+  Future<void> setMemberActive(String id, bool active) => _db.from('members').update({'active': active}).eq('id', id);
 
   @override
   Future<void> deleteMember(Member member) async {
@@ -162,7 +184,10 @@ class SupabaseGymRepository implements GymRepository {
     if (withPhoto.isEmpty) return const {};
     // Bucket privado: URLs firmadas en una sola petición, válidas 1 hora.
     final results = await _db.storage.from(_photoBucket).createSignedUrlsResult([for (final m in withPhoto) m.photoPath!], 3600);
-    final byPath = {for (final r in results) if (r is SignedUrlSuccess) r.path: r.signedUrl};
+    final byPath = {
+      for (final r in results)
+        if (r is SignedUrlSuccess) r.path: r.signedUrl,
+    };
     return {
       for (final m in withPhoto)
         if (byPath[m.photoPath] case final url?) m.id: NetworkImage(url),
@@ -194,9 +219,8 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<void> savePlan(PlanInput input, {String? id}) => id == null
-      ? _db.from('plans').insert(input.toJson())
-      : _db.from('plans').update(input.toJson()).eq('id', id);
+  Future<void> savePlan(PlanInput input, {String? id}) =>
+      id == null ? _db.from('plans').insert(input.toJson()) : _db.from('plans').update(input.toJson()).eq('id', id);
 
   @override
   Future<List<PaymentMethod>> paymentMethods() async {
@@ -221,8 +245,11 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<void> setPaymentMethodActive(String code, bool active) =>
-      _db.from('payment_methods').update({'active': active}).eq('code', code);
+  Future<void> setPaymentMethodActive(String code, bool active) => _db.from('payment_methods').update({'active': active}).eq('code', code);
+
+  @override
+  Future<void> setPaymentMethodRequiresReference(String code, bool requires) =>
+      _db.from('payment_methods').update({'requires_reference': requires}).eq('code', code);
 
   @override
   Future<GymSettings> settings() async {
@@ -246,15 +273,21 @@ class SupabaseGymRepository implements GymRepository {
 
   @override
   Future<Payment> addPayment(NewPayment p) async {
+    final problem = p.proof.problemFor(p.method);
+    if (problem != null) throw GymException(problem);
     if (!p.ready) throw const GymException('Falta la tasa de cambio para cobrar en bolívares');
-    final row = await _db.rpc<Map<String, dynamic>>('register_payment', params: {
-      'p_member_id': p.member.id,
-      'p_plan_id': p.plan.id,
-      'p_method': p.method.code,
-      'p_today': isoDate(p.today),
-      'p_rate': p.rate?.value,
-      'p_rate_source': p.rate?.source.code,
-    });
+    final row = await _db.rpc<Map<String, dynamic>>(
+      'register_payment',
+      params: {
+        'p_member_id': p.member.id,
+        'p_plan_id': p.plan.id,
+        'p_method': p.method.code,
+        'p_today': isoDate(p.today),
+        'p_rate': p.rate?.value,
+        'p_rate_source': p.rate?.source.code,
+        ...p.proof.toRpc(),
+      },
+    );
     return Payment.fromJson({
       ...row,
       'members': {'full_name': p.member.fullName},
@@ -264,8 +297,7 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<void> voidPayment(String id, String reason) =>
-      _db.rpc<void>('void_payment', params: {'p_payment_id': id, 'p_reason': reason});
+  Future<void> voidPayment(String id, String reason) => _db.rpc<void>('void_payment', params: {'p_payment_id': id, 'p_reason': reason});
 
   @override
   Future<List<Attendance>> attendanceSince(DateTime from) async {
@@ -288,9 +320,8 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<void> saveSupplier(SupplierInput input, {String? id}) => id == null
-      ? _db.from('suppliers').insert(input.toJson())
-      : _db.from('suppliers').update(input.toJson()).eq('id', id);
+  Future<void> saveSupplier(SupplierInput input, {String? id}) =>
+      id == null ? _db.from('suppliers').insert(input.toJson()) : _db.from('suppliers').update(input.toJson()).eq('id', id);
 
   @override
   Future<List<Product>> products() async {
@@ -298,7 +329,9 @@ class SupabaseGymRepository implements GymRepository {
     final costsF = _db.rpc<List<dynamic>>('product_costs');
     final rows = await rowsF;
     final costs = {for (final c in await costsF) (c as Map)['product_id'] as String: c['cost_cents'] as int};
-    return [for (final r in rows) Product.fromJson({...r, 'cost_cents': costs[r['id']]})];
+    return [
+      for (final r in rows) Product.fromJson({...r, 'cost_cents': costs[r['id']]}),
+    ];
   }
 
   @override
@@ -312,13 +345,10 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<int> addStock(String productId, int quantity, {int? unitCostCents, String? note}) =>
-      _db.rpc<int>('add_stock', params: {
-        'p_product_id': productId,
-        'p_quantity': quantity,
-        'p_unit_cost_cents': unitCostCents,
-        'p_note': note,
-      });
+  Future<int> addStock(String productId, int quantity, {int? unitCostCents, String? note}) => _db.rpc<int>(
+    'add_stock',
+    params: {'p_product_id': productId, 'p_quantity': quantity, 'p_unit_cost_cents': unitCostCents, 'p_note': note},
+  );
 
   @override
   Future<List<Sale>> sales({DateTime? from, DateTime? to, int limit = 200}) async {
@@ -330,20 +360,33 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<String> registerSale(List<CartLine> lines, PaymentMethod method, {String? memberId, ExchangeRate? rate}) {
+  Future<String> registerSale(
+    List<CartLine> lines,
+    PaymentMethod method, {
+    String? memberId,
+    ExchangeRate? rate,
+    ProofInput proof = const ProofInput(),
+  }) async {
+    final problem = proof.problemFor(method);
+    if (problem != null) throw GymException(problem);
     if (method.inBolivares && rate == null) throw const GymException('Falta la tasa de cambio para cobrar en bolívares');
-    return _db.rpc<String>('register_sale', params: {
-      'p_items': [for (final l in lines) {'product_id': l.product.id, 'quantity': l.quantity}],
-      'p_method': method.code,
-      'p_member_id': memberId,
-      'p_rate': method.inBolivares ? rate!.value : null,
-      'p_rate_source': method.inBolivares ? rate!.source.code : null,
-    });
+    return _db.rpc<String>(
+      'register_sale',
+      params: {
+        'p_items': [
+          for (final l in lines) {'product_id': l.product.id, 'quantity': l.quantity},
+        ],
+        'p_method': method.code,
+        'p_member_id': memberId,
+        'p_rate': method.inBolivares ? rate!.value : null,
+        'p_rate_source': method.inBolivares ? rate!.source.code : null,
+        ...proof.toRpc(),
+      },
+    );
   }
 
   @override
-  Future<void> voidSale(String id, String reason) =>
-      _db.rpc<void>('void_sale', params: {'p_sale_id': id, 'p_reason': reason});
+  Future<void> voidSale(String id, String reason) => _db.rpc<void>('void_sale', params: {'p_sale_id': id, 'p_reason': reason});
 
   @override
   Future<List<Purchase>> purchases({DateTime? from, DateTime? to, int limit = 200}) async {
@@ -355,7 +398,14 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<String> registerPurchase(NewPurchase p) => _db.rpc<String>('register_purchase', params: {
+  Future<String> registerPurchase(NewPurchase p) {
+    final method = p.method;
+    if (method != null && method.inBolivares && p.rate == null) {
+      throw const GymException('Falta la tasa de cambio para registrar un pago en bolívares');
+    }
+    return _db.rpc<String>(
+      'register_purchase',
+      params: {
         'p_items': [
           for (final l in p.lines) {'product_id': l.product.id, 'quantity': l.quantity, 'unit_cost_cents': l.unitCostCents},
         ],
@@ -363,11 +413,35 @@ class SupabaseGymRepository implements GymRepository {
         'p_invoice': p.invoice,
         'p_purchased_on': isoDate(p.purchasedOn),
         'p_notes': p.notes,
-      });
+        'p_method': method?.code,
+        'p_rate': method != null && method.inBolivares ? p.rate!.value : null,
+        'p_rate_source': method != null && method.inBolivares ? p.rate!.source.code : null,
+        'p_payment_reference': p.paymentReference,
+      },
+    );
+  }
 
   @override
-  Future<void> voidPurchase(String id, String reason) =>
-      _db.rpc<void>('void_purchase', params: {'p_purchase_id': id, 'p_reason': reason});
+  Future<void> voidPurchase(String id, String reason) => _db.rpc<void>('void_purchase', params: {'p_purchase_id': id, 'p_reason': reason});
+
+  // -------------------------------------------------------------------------
+  // Comprobantes
+
+  @override
+  Future<String> attachReceipt(ProofKind kind, String id, Uint8List bytes, {String mimeType = 'image/jpeg'}) async {
+    final ext = mimeType.endsWith('png') ? 'png' : (mimeType.endsWith('webp') ? 'webp' : 'jpg');
+    final path = '${kind.folder}/$id/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await _db.storage.from(_receiptBucket).uploadBinary(path, bytes, fileOptions: FileOptions(contentType: mimeType));
+    await _db.rpc<void>('attach_receipt', params: {'p_kind': kind.code, 'p_id': id, 'p_path': path});
+    return path;
+  }
+
+  @override
+  Future<ImageProvider> receiptImage(String path) async => NetworkImage(await _db.storage.from(_receiptBucket).createSignedUrl(path, 3600));
+
+  @override
+  Future<void> setPaymentVerified(ProofKind kind, String id, bool verified) =>
+      _db.rpc<void>('set_payment_verified', params: {'p_kind': kind.code, 'p_id': id, 'p_verified': verified});
 
   // -------------------------------------------------------------------------
   // Entrenos
@@ -443,16 +517,19 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<void> updateStaff(String userId, StaffInput i) => _db.rpc<void>('staff_update', params: {
-        'p_user_id': userId,
-        'p_full_name': i.fullName,
-        'p_role': i.role.code,
-        'p_document_id': i.documentId,
-        'p_phone': i.phone,
-        'p_email': i.email,
-        'p_hired_on': i.hiredOn == null ? null : isoDate(i.hiredOn!),
-        'p_notes': i.notes,
-      });
+  Future<void> updateStaff(String userId, StaffInput i) => _db.rpc<void>(
+    'staff_update',
+    params: {
+      'p_user_id': userId,
+      'p_full_name': i.fullName,
+      'p_role': i.role.code,
+      'p_document_id': i.documentId,
+      'p_phone': i.phone,
+      'p_email': i.email,
+      'p_hired_on': i.hiredOn == null ? null : isoDate(i.hiredOn!),
+      'p_notes': i.notes,
+    },
+  );
 
   @override
   Future<void> setStaffStatus(String userId, StaffStatus status) =>
@@ -482,10 +559,8 @@ class SupabaseGymRepository implements GymRepository {
   }
 
   @override
-  Future<void> setRolePermission(StaffRole role, String permission, bool enabled) => _db.rpc<void>(
-        'set_role_permission',
-        params: {'p_role': role.code, 'p_permission': permission, 'p_enabled': enabled},
-      );
+  Future<void> setRolePermission(StaffRole role, String permission, bool enabled) =>
+      _db.rpc<void>('set_role_permission', params: {'p_role': role.code, 'p_permission': permission, 'p_enabled': enabled});
 
   @override
   Future<List<StaffShift>> shifts(String userId) async {
@@ -526,9 +601,7 @@ class SupabaseGymRepository implements GymRepository {
 // Providers
 
 /// Se sobrescribe en `main` con la implementación real o la demo.
-final gymRepositoryProvider = Provider<GymRepository>(
-  (ref) => throw UnimplementedError('gymRepositoryProvider sin configurar'),
-);
+final gymRepositoryProvider = Provider<GymRepository>((ref) => throw UnimplementedError('gymRepositoryProvider sin configurar'));
 
 /// Cliente de Supabase, o null en modo demo (sin login).
 final supabaseClientProvider = Provider<SupabaseClient?>((ref) => null);
@@ -546,21 +619,13 @@ final currentStaffProvider = FutureProvider<StaffAccess?>((ref) async {
 });
 
 /// ¿Puede la sesión actual hacer [permission]? false mientras carga.
-final canProvider = Provider.family<bool, String>(
-  (ref, permission) => ref.watch(currentStaffProvider).value?.can(permission) ?? false,
-);
+final canProvider = Provider.family<bool, String>((ref, permission) => ref.watch(currentStaffProvider).value?.can(permission) ?? false);
 
-final staffDirectoryProvider = FutureProvider<List<StaffMember>>(
-  (ref) => ref.watch(gymRepositoryProvider).staffDirectory(),
-);
+final staffDirectoryProvider = FutureProvider<List<StaffMember>>((ref) => ref.watch(gymRepositoryProvider).staffDirectory());
 
-final permissionCatalogProvider = FutureProvider<List<PermissionInfo>>(
-  (ref) => ref.watch(gymRepositoryProvider).permissions(),
-);
+final permissionCatalogProvider = FutureProvider<List<PermissionInfo>>((ref) => ref.watch(gymRepositoryProvider).permissions());
 
-final rolePermissionsProvider = FutureProvider<Map<StaffRole, Set<String>>>(
-  (ref) => ref.watch(gymRepositoryProvider).rolePermissions(),
-);
+final rolePermissionsProvider = FutureProvider<Map<StaffRole, Set<String>>>((ref) => ref.watch(gymRepositoryProvider).rolePermissions());
 
 final staffShiftsProvider = FutureProvider.family<List<StaffShift>, String>(
   (ref, userId) => ref.watch(gymRepositoryProvider).shifts(userId),
@@ -581,16 +646,12 @@ final myOpenShiftProvider = FutureProvider<StaffTimeEntry?>((ref) async {
   return entries.where((e) => e.userId == me.userId && e.open).firstOrNull;
 });
 
-final auditLogProvider = FutureProvider<List<AuditEntry>>(
-  (ref) => ref.watch(gymRepositoryProvider).auditLog(),
-);
+final auditLogProvider = FutureProvider<List<AuditEntry>>((ref) => ref.watch(gymRepositoryProvider).auditLog());
 
 /// Reloj inyectable para que los tests sean deterministas.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
-final membersProvider = FutureProvider<List<Member>>(
-  (ref) => ref.watch(gymRepositoryProvider).members(),
-);
+final membersProvider = FutureProvider<List<Member>>((ref) => ref.watch(gymRepositoryProvider).members());
 
 /// Fotos de perfil. Las URLs firmadas duran 1 h: se renuevan a los 50 min.
 final memberPhotosProvider = FutureProvider<Map<String, ImageProvider>>((ref) async {
@@ -600,22 +661,14 @@ final memberPhotosProvider = FutureProvider<Map<String, ImageProvider>>((ref) as
   return ref.watch(gymRepositoryProvider).memberPhotos(members);
 });
 
-final plansProvider = FutureProvider<List<Plan>>(
-  (ref) => ref.watch(gymRepositoryProvider).plans(),
-);
+final plansProvider = FutureProvider<List<Plan>>((ref) => ref.watch(gymRepositoryProvider).plans());
 
 /// Todos los métodos (activos e inactivos), en orden.
-final paymentMethodsProvider = FutureProvider<List<PaymentMethod>>(
-  (ref) => ref.watch(gymRepositoryProvider).paymentMethods(),
-);
+final paymentMethodsProvider = FutureProvider<List<PaymentMethod>>((ref) => ref.watch(gymRepositoryProvider).paymentMethods());
 
-final settingsProvider = FutureProvider<GymSettings>(
-  (ref) => ref.watch(gymRepositoryProvider).settings(),
-);
+final settingsProvider = FutureProvider<GymSettings>((ref) => ref.watch(gymRepositoryProvider).settings());
 
-final paymentsProvider = FutureProvider<List<Payment>>(
-  (ref) => ref.watch(gymRepositoryProvider).payments(),
-);
+final paymentsProvider = FutureProvider<List<Payment>>((ref) => ref.watch(gymRepositoryProvider).payments());
 
 final memberPaymentsProvider = FutureProvider.family<List<Payment>, String>(
   (ref, memberId) => ref.watch(gymRepositoryProvider).payments(memberId: memberId),
@@ -626,27 +679,24 @@ final todayAttendanceProvider = FutureProvider<List<Attendance>>((ref) {
   return ref.watch(gymRepositoryProvider).attendanceSince(DateTime(now.year, now.month, now.day));
 });
 
-final suppliersProvider = FutureProvider<List<Supplier>>(
-  (ref) => ref.watch(gymRepositoryProvider).suppliers(),
-);
+final suppliersProvider = FutureProvider<List<Supplier>>((ref) => ref.watch(gymRepositoryProvider).suppliers());
 
-final productsProvider = FutureProvider<List<Product>>(
-  (ref) => ref.watch(gymRepositoryProvider).products(),
-);
+final productsProvider = FutureProvider<List<Product>>((ref) => ref.watch(gymRepositoryProvider).products());
 
-final salesProvider = FutureProvider<List<Sale>>(
-  (ref) => ref.watch(gymRepositoryProvider).sales(),
-);
+final salesProvider = FutureProvider<List<Sale>>((ref) => ref.watch(gymRepositoryProvider).sales());
 
-final purchasesProvider = FutureProvider<List<Purchase>>(
-  (ref) => ref.watch(gymRepositoryProvider).purchases(),
-);
+final purchasesProvider = FutureProvider<List<Purchase>>((ref) => ref.watch(gymRepositoryProvider).purchases());
 
 /// Entrenos de los últimos 120 días (la pantalla filtra por cliente).
 final workoutsProvider = FutureProvider<List<WorkoutLog>>((ref) {
   final now = ref.watch(clockProvider)();
   return ref.watch(gymRepositoryProvider).workouts(from: DateTime(now.year, now.month, now.day - 120));
 });
+
+/// Foto de un comprobante por su ruta (URL firmada de 1 h).
+final receiptImageProvider = FutureProvider.family<ImageProvider, String>(
+  (ref, path) => ref.watch(gymRepositoryProvider).receiptImage(path),
+);
 
 /// Movimientos de un día (fecha local, a medianoche) para el cierre de caja.
 final cashDayProvider = FutureProvider.family<(List<Payment>, List<Sale>), DateTime>((ref, day) async {

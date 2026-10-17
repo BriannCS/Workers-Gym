@@ -16,6 +16,7 @@ abstract final class Perm {
   static const paymentsView = 'payments.view';
   static const paymentsCreate = 'payments.create';
   static const paymentsVoid = 'payments.void';
+  static const paymentsVerify = 'payments.verify';
   static const storeSell = 'store.sell';
   static const salesVoid = 'sales.void';
   static const inventoryView = 'inventory.view';
@@ -57,6 +58,7 @@ const permissionCatalog = <PermissionInfo>[
   PermissionInfo(Perm.paymentsView, 'Ver pagos e historial de cobros', 'Pagos'),
   PermissionInfo(Perm.paymentsCreate, 'Cobrar membresías', 'Pagos'),
   PermissionInfo(Perm.paymentsVoid, 'Anular pagos', 'Pagos'),
+  PermissionInfo(Perm.paymentsVerify, 'Verificar pagos contra el banco', 'Pagos'),
   PermissionInfo(Perm.storeSell, 'Vender en la tienda', 'Tienda'),
   PermissionInfo(Perm.salesVoid, 'Anular ventas', 'Tienda'),
   PermissionInfo(Perm.inventoryView, 'Ver productos y stock actual', 'Inventario'),

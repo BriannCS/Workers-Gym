@@ -9,7 +9,9 @@ import '../../data/gym_repository.dart';
 import '../../data/rates.dart';
 import '../../domain/models.dart';
 import '../../domain/staff.dart';
+import '../../core/widgets/barcode_scanner.dart';
 import '../payments/method_picker.dart';
+import '../payments/proof_widgets.dart';
 
 /// Venta en curso. Vive en un provider para que el ticket (panel lateral en
 /// escritorio, hoja inferior en teléfono) y el catálogo compartan el mismo
@@ -24,9 +26,9 @@ class CartState {
   int get items => quantities.values.fold(0, (s, q) => s + q);
 
   List<CartLine> lines(Map<String, Product> byId) => [
-        for (final MapEntry(key: id, value: q) in quantities.entries)
-          if (byId[id] != null) CartLine(byId[id]!, q),
-      ];
+    for (final MapEntry(key: id, value: q) in quantities.entries)
+      if (byId[id] != null) CartLine(byId[id]!, q),
+  ];
 }
 
 class CartController extends Notifier<CartState> {
@@ -57,6 +59,35 @@ class StoreScreen extends ConsumerStatefulWidget {
 
 class _StoreScreenState extends ConsumerState<StoreScreen> {
   String _query = '';
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// Código escaneado: si es de un producto lo agrega al carrito; si no, lo
+  /// deja en la búsqueda.
+  void _onScanned(String code) {
+    final products = ref.read(productsProvider).value ?? const <Product>[];
+    final p = products.where((p) => p.active && p.sku?.toLowerCase() == code.toLowerCase()).firstOrNull;
+    if (p == null) {
+      _search.text = code;
+      setState(() => _query = code.toLowerCase());
+      showToast(context, 'Ningún producto tiene el código $code', error: true);
+      return;
+    }
+    if ((ref.read(cartProvider).quantities[p.id] ?? 0) >= p.stock) {
+      showToast(context, 'No queda más stock de ${p.name}', error: true);
+      return;
+    }
+    ref.read(cartProvider.notifier).add(p, 1);
+    // Campo limpio para el siguiente código del lector.
+    _search.clear();
+    setState(() => _query = '');
+    showToast(context, '${p.name} agregado');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,8 +98,17 @@ class _StoreScreenState extends ConsumerState<StoreScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
+          controller: _search,
           onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
-          decoration: const InputDecoration(hintText: 'Buscar producto o código', prefixIcon: Icon(Icons.search, size: 20)),
+          // Lector USB: escribe el código y pulsa Enter.
+          onSubmitted: (v) {
+            if (v.trim().isNotEmpty) _onScanned(v.trim());
+          },
+          decoration: InputDecoration(
+            hintText: 'Buscar producto o código',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: ScanButton(onScanned: _onScanned, tooltip: 'Escanear y agregar al carrito'),
+          ),
         ),
         const SizedBox(height: 20),
         AsyncView(
@@ -86,11 +126,7 @@ class _StoreScreenState extends ConsumerState<StoreScreen> {
               spacing: 14,
               children: [
                 for (final p in visible)
-                  _PriceTag(
-                    product: p,
-                    inCart: cart.quantities[p.id] ?? 0,
-                    onTap: () => ref.read(cartProvider.notifier).add(p, 1),
-                  ),
+                  _PriceTag(product: p, inCart: cart.quantities[p.id] ?? 0, onTap: () => ref.read(cartProvider.notifier).add(p, 1)),
               ],
             );
           },
@@ -98,31 +134,38 @@ class _StoreScreenState extends ConsumerState<StoreScreen> {
       ],
     );
 
-    return LayoutBuilder(builder: (context, c) {
-      final wide = c.maxWidth >= 980;
-      final body = PageBody(
-        header: const PageHeader(title: 'Tienda', subtitle: 'Mostrador de venta'),
-        children: [
-          if (wide)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 32,
-              children: [
-                Expanded(flex: 3, child: catalog),
-                const Expanded(flex: 2, child: Column(spacing: 28, children: [_Receipt(), _TodaySales()])),
-              ],
-            )
-          else ...[
-            catalog,
-            const SizedBox(height: 28),
-            const _TodaySales(),
-            if (cart.items > 0) const SizedBox(height: 72),
+    return LayoutBuilder(
+      builder: (context, c) {
+        final wide = c.maxWidth >= 980;
+        final body = PageBody(
+          header: const PageHeader(title: 'Tienda', subtitle: 'Mostrador de venta'),
+          children: [
+            if (wide)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 32,
+                children: [
+                  Expanded(flex: 3, child: catalog),
+                  const Expanded(flex: 2, child: Column(spacing: 28, children: [_Receipt(), _TodaySales()])),
+                ],
+              )
+            else ...[
+              catalog,
+              const SizedBox(height: 28),
+              const _TodaySales(),
+              if (cart.items > 0) const SizedBox(height: 72),
+            ],
           ],
-        ],
-      );
-      if (wide || cart.items == 0) return body;
-      return Stack(children: [body, const Positioned(left: 0, right: 0, bottom: 0, child: _CartBar())]);
-    });
+        );
+        if (wide || cart.items == 0) return body;
+        return Stack(
+          children: [
+            body,
+            const Positioned(left: 0, right: 0, bottom: 0, child: _CartBar()),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -168,7 +211,12 @@ class _PriceTag extends StatelessWidget {
                           p.name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.25, color: selected ? AppColors.surface : AppColors.ink),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13.5,
+                            height: 1.25,
+                            color: selected ? AppColors.surface : AppColors.ink,
+                          ),
                         ),
                       ),
                       if (selected)
@@ -183,7 +231,10 @@ class _PriceTag extends StatelessWidget {
                   const SizedBox(height: 10),
                   Text(formatMoney(p.priceCents), style: AppText.score(30, color: selected ? AppColors.surface : AppColors.ink)),
                   const SizedBox(height: 2),
-                  Text(stockText, style: AppText.mono(size: 10.5, weight: FontWeight.w600, color: selected ? AppColors.plateYellow : stockColor)),
+                  Text(
+                    stockText,
+                    style: AppText.mono(size: 10.5, weight: FontWeight.w600, color: selected ? AppColors.plateYellow : stockColor),
+                  ),
                 ],
               ),
             ),
@@ -234,17 +285,24 @@ class _TagPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final path = _tagPath(Offset.zero & size);
     canvas.drawPath(path, Paint()..color = fill);
-    canvas.drawPath(path, Paint()
-      ..color = stroke
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.3);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = stroke
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3,
+    );
     // Perforación del cordel.
     final hole = Offset(15, size.height / 2);
     canvas.drawCircle(hole, 4.5, Paint()..color = AppColors.bg);
-    canvas.drawCircle(hole, 4.5, Paint()
-      ..color = fill == AppColors.ink ? AppColors.surface : stroke
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2);
+    canvas.drawCircle(
+      hole,
+      4.5,
+      Paint()
+        ..color = fill == AppColors.ink ? AppColors.surface : stroke
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
   }
 
   @override
@@ -265,11 +323,42 @@ class _Receipt extends ConsumerStatefulWidget {
 
 class _ReceiptState extends ConsumerState<_Receipt> {
   bool _busy = false;
+  final _proof = ProofDraft();
+
+  @override
+  void initState() {
+    super.initState();
+    _proof.addListener(_onProof);
+  }
+
+  void _onProof() => setState(() {});
+
+  @override
+  void dispose() {
+    _proof
+      ..removeListener(_onProof)
+      ..dispose();
+    super.dispose();
+  }
 
   Future<void> _checkout(List<CartLine> lines, CartState cart, PaymentMethod method, ExchangeRate? rate) async {
     setState(() => _busy = true);
     try {
-      await ref.read(gymRepositoryProvider).registerSale(lines, method, memberId: cart.member?.id, rate: rate);
+      final id = await ref
+          .read(gymRepositoryProvider)
+          .registerSale(
+            lines,
+            method,
+            memberId: cart.member?.id,
+            rate: rate,
+            proof: method.requiresReference ? _proof.input : const ProofInput(),
+          );
+      if (method.requiresReference && mounted) await uploadDraftReceipt(context, ref, _proof, ProofKind.sale, id);
+      _proof
+        ..reference.clear()
+        ..bank.clear()
+        ..payerId.clear()
+        ..setPhoto(null);
       refreshGymData(ref);
       ref.read(cartProvider.notifier).clear();
       if (!mounted) return;
@@ -305,7 +394,12 @@ class _ReceiptState extends ConsumerState<_Receipt> {
         children: [
           Row(
             children: [
-              Expanded(child: Text('VENTA EN CURSO', style: AppText.label.copyWith(color: AppColors.ink, fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(
+                  'VENTA EN CURSO',
+                  style: AppText.label.copyWith(color: AppColors.ink, fontWeight: FontWeight.w600),
+                ),
+              ),
               if (lines.isNotEmpty) TextButton(onPressed: notifier.clear, child: const Text('Vaciar')),
             ],
           ),
@@ -315,7 +409,11 @@ class _ReceiptState extends ConsumerState<_Receipt> {
           if (lines.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
-              child: Text('Toca una etiqueta para agregarla.', style: AppText.mono(size: 12.5, color: AppColors.textMuted), textAlign: TextAlign.center),
+              child: Text(
+                'Toca una etiqueta para agregarla.',
+                style: AppText.mono(size: 12.5, color: AppColors.textMuted),
+                textAlign: TextAlign.center,
+              ),
             )
           else
             for (final l in lines)
@@ -324,10 +422,23 @@ class _ReceiptState extends ConsumerState<_Receipt> {
                 child: Row(
                   children: [
                     _Step(icon: Icons.remove, tooltip: 'Quitar uno', onTap: () => notifier.add(l.product, -1)),
-                    SizedBox(width: 30, child: Text('${l.quantity}', textAlign: TextAlign.center, style: AppText.mono(size: 14, weight: FontWeight.w600))),
-                    _Step(icon: Icons.add, tooltip: 'Agregar uno', onTap: l.quantity < l.product.stock ? () => notifier.add(l.product, 1) : null),
+                    SizedBox(
+                      width: 30,
+                      child: Text(
+                        '${l.quantity}',
+                        textAlign: TextAlign.center,
+                        style: AppText.mono(size: 14, weight: FontWeight.w600),
+                      ),
+                    ),
+                    _Step(
+                      icon: Icons.add,
+                      tooltip: 'Agregar uno',
+                      onTap: l.quantity < l.product.stock ? () => notifier.add(l.product, 1) : null,
+                    ),
                     const SizedBox(width: 10),
-                    Expanded(child: Text(l.product.name, style: AppText.mono(size: 12.5), overflow: TextOverflow.ellipsis)),
+                    Expanded(
+                      child: Text(l.product.name, style: AppText.mono(size: 12.5), overflow: TextOverflow.ellipsis),
+                    ),
                     Text(formatMoney(l.totalCents), style: AppText.mono(size: 13, weight: FontWeight.w600)),
                   ],
                 ),
@@ -361,9 +472,11 @@ class _ReceiptState extends ConsumerState<_Receipt> {
           const SizedBox(height: 12),
           MethodPicker(selected: method, onChanged: notifier.setMethod),
           if (lines.isNotEmpty) BolivarCharge(usdCents: total, method: method),
+          if (lines.isNotEmpty && method != null) ProofFields(draft: _proof, method: method),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: lines.isEmpty || method == null || (method.inBolivares && rate == null) || _busy
+            onPressed:
+                lines.isEmpty || method == null || (method.inBolivares && rate == null) || _proof.input.problemFor(method) != null || _busy
                 ? null
                 : () => _checkout(lines, cart, method, rate),
             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20)),
@@ -384,12 +497,12 @@ class _Step extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-        tooltip: tooltip,
-        onPressed: onTap,
-        visualDensity: VisualDensity.compact,
-        style: IconButton.styleFrom(side: const BorderSide(color: AppColors.borderStrong)),
-        icon: Icon(icon, size: 16),
-      );
+    tooltip: tooltip,
+    onPressed: onTap,
+    visualDensity: VisualDensity.compact,
+    style: IconButton.styleFrom(side: const BorderSide(color: AppColors.borderStrong)),
+    icon: Icon(icon, size: 16),
+  );
 }
 
 /// Teléfono: resumen fijo abajo que abre el ticket.
@@ -433,7 +546,11 @@ class _TodaySales extends ConsumerWidget {
   const _TodaySales();
 
   Future<void> _void(BuildContext context, WidgetRef ref, Sale s) async {
-    final reason = await askVoidReason(context, title: 'Anular venta', detail: '${s.description} · ${formatMoney(s.totalCents)}. El stock se devuelve.');
+    final reason = await askVoidReason(
+      context,
+      title: 'Anular venta',
+      detail: '${s.description} · ${formatMoney(s.totalCents)}. El stock se devuelve.',
+    );
     if (reason == null) return;
     try {
       await ref.read(gymRepositoryProvider).voidSale(s.id, reason);
@@ -467,29 +584,71 @@ class _TodaySales extends ConsumerWidget {
                     decoration: const BoxDecoration(border: rowRule),
                     child: Row(
                       children: [
-                        SizedBox(width: 50, child: Text(formatTime(s.soldAt), style: AppText.mono(size: 12.5, color: AppColors.plateBlue))),
+                        SizedBox(
+                          width: 50,
+                          child: Text(formatTime(s.soldAt), style: AppText.mono(size: 12.5, color: AppColors.plateBlue)),
+                        ),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(s.description, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
                               Text(
-                                s.voided ? 'ANULADA: ${s.voidReason}' : [s.methodName, ?s.memberName].join(' · '),
+                                s.description,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
+                              ),
+                              Text(
+                                s.voided
+                                    ? 'ANULADA: ${s.voidReason}'
+                                    : [
+                                        s.methodName,
+                                        if (s.proof?.reference != null) 'ref. ${s.proof!.reference}',
+                                        ?s.memberName,
+                                      ].join(' · '),
                                 style: AppText.mono(size: 11.5, color: s.voided ? AppColors.danger : AppColors.textMuted),
                                 overflow: TextOverflow.ellipsis,
                               ),
+                              if (s.proof != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 3),
+                                  child: ProofBadge(proof: s.proof),
+                                ),
                             ],
                           ),
                         ),
+                        if (s.proof != null)
+                          IconButton(
+                            tooltip: 'Ver comprobante',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => showProofDetail(
+                              context,
+                              kind: ProofKind.sale,
+                              id: s.id,
+                              proof: s.proof,
+                              title: s.description,
+                              amountLabel: s.totalVesCents == null ? formatMoney(s.totalCents) : formatVes(s.totalVesCents!),
+                              methodName: s.methodName,
+                              createdBy: s.createdBy,
+                              voided: s.voided,
+                            ),
+                            icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                          ),
                         Text(
                           formatMoney(s.totalCents),
-                          style: AppText.mono(size: 13, weight: FontWeight.w600).copyWith(decoration: s.voided ? TextDecoration.lineThrough : null),
+                          style: AppText.mono(
+                            size: 13,
+                            weight: FontWeight.w600,
+                          ).copyWith(decoration: s.voided ? TextDecoration.lineThrough : null),
                         ),
                         SizedBox(
                           width: 44,
                           child: s.voided || !ref.watch(canProvider(Perm.salesVoid))
                               ? null
-                              : IconButton(tooltip: 'Anular venta', onPressed: () => _void(context, ref, s), icon: const Icon(Icons.block, size: 18)),
+                              : IconButton(
+                                  tooltip: 'Anular venta',
+                                  onPressed: () => _void(context, ref, s),
+                                  icon: const Icon(Icons.block, size: 18),
+                                ),
                         ),
                       ],
                     ),

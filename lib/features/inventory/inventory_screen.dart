@@ -9,6 +9,7 @@ import '../../core/widgets/ui.dart';
 import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
 import '../../domain/staff.dart';
+import '../../core/widgets/barcode_scanner.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -41,41 +42,43 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
             const SizedBox.shrink()
           else if (suppliersTab)
             FilledButton.icon(
-                  onPressed: () => _showSupplierForm(context),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Nuevo proveedor'),
-                )
+              onPressed: () => _showSupplierForm(context),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Nuevo proveedor'),
+            )
           else
             FilledButton.icon(
-                  onPressed: () => _showProductForm(context),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Nuevo producto'),
-                ),
+              onPressed: () => _showProductForm(context),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Nuevo producto'),
+            ),
         ],
       ),
       children: [
-        ScoreBoard(scores: [
-          Score(label: 'Productos activos', value: '${active.length}'),
-          Score(
-            label: 'Stock bajo',
-            value: '$lowCount',
-            color: lowCount == 0 ? AppColors.success : AppColors.warning,
-            caption: 'en o por debajo del mínimo',
-            onTap: () => setState(() {
-              _suppliersTab = false;
-              _onlyLow = true;
-            }),
-          ),
-          if (showCost)
-            Score(label: 'Valor del inventario', value: formatMoney(value), color: AppColors.info, caption: 'a precio de costo')
-          else
+        ScoreBoard(
+          scores: [
+            Score(label: 'Productos activos', value: '${active.length}'),
             Score(
-              label: 'Agotados',
-              value: '${active.where((p) => p.stock == 0).length}',
-              color: active.any((p) => p.stock == 0) ? AppColors.danger : AppColors.success,
-              caption: 'sin unidades',
+              label: 'Stock bajo',
+              value: '$lowCount',
+              color: lowCount == 0 ? AppColors.success : AppColors.warning,
+              caption: 'en o por debajo del mínimo',
+              onTap: () => setState(() {
+                _suppliersTab = false;
+                _onlyLow = true;
+              }),
             ),
-        ]),
+            if (showCost)
+              Score(label: 'Valor del inventario', value: formatMoney(value), color: AppColors.info, caption: 'a precio de costo')
+            else
+              Score(
+                label: 'Agotados',
+                value: '${active.where((p) => p.stock == 0).length}',
+                color: active.any((p) => p.stock == 0) ? AppColors.danger : AppColors.success,
+                caption: 'sin unidades',
+              ),
+          ],
+        ),
         const SizedBox(height: 28),
         Wrap(
           spacing: 12,
@@ -93,11 +96,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 showSelectedIcon: false,
               ),
             if (!suppliersTab)
-              FilterChip(
-                label: Text('Solo stock bajo  $lowCount'),
-                selected: _onlyLow,
-                onSelected: (v) => setState(() => _onlyLow = v),
-              ),
+              FilterChip(label: Text('Solo stock bajo  $lowCount'), selected: _onlyLow, onSelected: (v) => setState(() => _onlyLow = v)),
           ],
         ),
         const SizedBox(height: 16),
@@ -139,14 +138,16 @@ class _ProductsTable extends ConsumerWidget {
           builder: (context, c) => Column(
             children: [
               if (c.maxWidth >= 760)
-                TableHeader(cells: [
-                  ('Producto', 5),
-                  if (showSupplier) ('Proveedor', 3),
-                  ('Precio', 2),
-                  if (showCost) ...[('Costo', 2), ('Margen', 2)],
-                  ('Stock', 3),
-                  ('', 2),
-                ]),
+                TableHeader(
+                  cells: [
+                    ('Producto', 5),
+                    if (showSupplier) ('Proveedor', 3),
+                    ('Precio', 2),
+                    if (showCost) ...[('Costo', 2), ('Margen', 2)],
+                    ('Stock', 3),
+                    ('', 2),
+                  ],
+                ),
               for (final p in visible)
                 _ProductRow(
                   product: p,
@@ -187,18 +188,30 @@ class _ProductRow extends StatelessWidget {
     final stockColor = p.stock == 0 ? AppColors.danger : (p.lowStock ? AppColors.warning : AppColors.success);
     final stock = Text('${p.stock}', style: AppText.score(26, color: stockColor));
     final actions = [
-      if (canManage) IconButton(
-        tooltip: 'Ajuste de inventario',
-        onPressed: () => showDialog(context: context, builder: (_) => _StockDialog(product: p)),
-        icon: const Icon(Icons.tune, size: 20),
-      ),
       if (canManage)
-        IconButton(tooltip: 'Editar', onPressed: () => _showProductForm(context, product: p), icon: const Icon(Icons.edit_outlined, size: 20)),
+        IconButton(
+          tooltip: 'Ajuste de inventario',
+          onPressed: () => showDialog(
+            context: context,
+            builder: (_) => _StockDialog(product: p),
+          ),
+          icon: const Icon(Icons.tune, size: 20),
+        ),
+      if (canManage)
+        IconButton(
+          tooltip: 'Editar',
+          onPressed: () => _showProductForm(context, product: p),
+          icon: const Icon(Icons.edit_outlined, size: 20),
+        ),
     ];
     final name = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+        Text(
+          p.name,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+          overflow: TextOverflow.ellipsis,
+        ),
         Text([?p.sku, if (!p.active) 'ARCHIVADO'].join(' · '), style: muted.copyWith(fontSize: 11.5)),
       ],
     );
@@ -240,14 +253,27 @@ class _ProductRow extends StatelessWidget {
         child: Row(
           children: [
             Expanded(flex: 5, child: name),
-            if (showSupplier) Expanded(flex: 3, child: Text(p.supplierName ?? '—', style: muted, overflow: TextOverflow.ellipsis)),
-            Expanded(flex: 2, child: Text(formatMoney(p.priceCents), style: AppText.mono(size: 13.5, weight: FontWeight.w600))),
+            if (showSupplier)
+              Expanded(
+                flex: 3,
+                child: Text(p.supplierName ?? '—', style: muted, overflow: TextOverflow.ellipsis),
+              ),
+            Expanded(
+              flex: 2,
+              child: Text(formatMoney(p.priceCents), style: AppText.mono(size: 13.5, weight: FontWeight.w600)),
+            ),
             if (showCost) ...[
               Expanded(flex: 2, child: Text(cost == null ? '—' : formatMoney(cost), style: muted)),
               Expanded(flex: 2, child: Text(margin == null ? '—' : '${margin.toStringAsFixed(0)}%', style: muted)),
             ],
-            Expanded(flex: 3, child: Align(alignment: Alignment.centerLeft, child: stock)),
-            Expanded(flex: 2, child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions)),
+            Expanded(
+              flex: 3,
+              child: Align(alignment: Alignment.centerLeft, child: stock),
+            ),
+            Expanded(
+              flex: 2,
+              child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions),
+            ),
           ],
         ),
       );
@@ -275,7 +301,8 @@ class _SuppliersTable extends ConsumerWidget {
           : LayoutBuilder(
               builder: (context, c) => Column(
                 children: [
-                  if (c.maxWidth >= 760) const TableHeader(cells: [('Proveedor', 4), ('Teléfono', 3), ('Correo', 4), ('Productos', 2), ('', 1)]),
+                  if (c.maxWidth >= 760)
+                    const TableHeader(cells: [('Proveedor', 4), ('Teléfono', 3), ('Correo', 4), ('Productos', 2), ('', 1)]),
                   for (final s in list)
                     Container(
                       padding: const EdgeInsets.fromLTRB(20, 8, 8, 8),
@@ -289,7 +316,11 @@ class _SuppliersTable extends ConsumerWidget {
                                     children: [
                                       Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                                       Text(
-                                        [if (s.phone != null) formatPhone(s.phone), ?s.email, '${products.where((p) => p.supplierId == s.id).length} productos'].join(' · '),
+                                        [
+                                          if (s.phone != null) formatPhone(s.phone),
+                                          ?s.email,
+                                          '${products.where((p) => p.supplierId == s.id).length} productos',
+                                        ].join(' · '),
                                         style: muted,
                                       ),
                                     ],
@@ -297,16 +328,24 @@ class _SuppliersTable extends ConsumerWidget {
                                 ),
                                 IconButton(
                                   tooltip: 'Editar',
-                                  onPressed: ref.watch(canProvider(Perm.inventoryManage)) ? () => _showSupplierForm(context, supplier: s) : null,
+                                  onPressed: ref.watch(canProvider(Perm.inventoryManage))
+                                      ? () => _showSupplierForm(context, supplier: s)
+                                      : null,
                                   icon: const Icon(Icons.edit_outlined, size: 20),
                                 ),
                               ],
                             )
                           : Row(
                               children: [
-                                Expanded(flex: 4, child: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                Expanded(
+                                  flex: 4,
+                                  child: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                ),
                                 Expanded(flex: 3, child: Text(formatPhone(s.phone), style: muted)),
-                                Expanded(flex: 4, child: Text(s.email ?? '—', style: muted, overflow: TextOverflow.ellipsis)),
+                                Expanded(
+                                  flex: 4,
+                                  child: Text(s.email ?? '—', style: muted, overflow: TextOverflow.ellipsis),
+                                ),
                                 Expanded(flex: 2, child: Text('${products.where((p) => p.supplierId == s.id).length}', style: muted)),
                                 Expanded(
                                   flex: 1,
@@ -314,7 +353,9 @@ class _SuppliersTable extends ConsumerWidget {
                                     alignment: Alignment.centerRight,
                                     child: IconButton(
                                       tooltip: 'Editar',
-                                      onPressed: ref.watch(canProvider(Perm.inventoryManage)) ? () => _showSupplierForm(context, supplier: s) : null,
+                                      onPressed: ref.watch(canProvider(Perm.inventoryManage))
+                                          ? () => _showSupplierForm(context, supplier: s)
+                                          : null,
                                       icon: const Icon(Icons.edit_outlined, size: 20),
                                     ),
                                   ),
@@ -334,8 +375,10 @@ class _SuppliersTable extends ConsumerWidget {
 
 String? _opt(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
 
-Future<void> _showProductForm(BuildContext context, {Product? product}) =>
-    showDialog(context: context, builder: (_) => _ProductForm(product: product));
+Future<void> _showProductForm(BuildContext context, {Product? product}) => showDialog(
+  context: context,
+  builder: (_) => _ProductForm(product: product),
+);
 
 class _ProductForm extends ConsumerStatefulWidget {
   const _ProductForm({this.product});
@@ -359,6 +402,33 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
   bool _busy = false;
 
   static String _cents(int? c) => c == null ? '' : (c / 100).toStringAsFixed(2);
+
+  /// Código leído con la cámara. Si ya es de otro producto, avisa y ofrece
+  /// abrir ese en vez de crear uno repetido.
+  Future<void> _onScanned(String code) async {
+    final products = ref.read(productsProvider).value ?? const <Product>[];
+    final clash = products.where((p) => p.id != widget.product?.id && p.sku?.toLowerCase() == code.toLowerCase()).firstOrNull;
+    if (clash == null) {
+      setState(() => _sku.text = code);
+      return;
+    }
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ese código ya existe'),
+        content: Text('El código $code es de "${clash.name}" (stock ${clash.stock}). ¿Abrir ese producto?'),
+        actions: [
+          OutlinedButton(onPressed: () => Navigator.pop(context, false), child: const Text('No')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Abrir producto')),
+        ],
+      ),
+    );
+    if (open != true || !mounted) return;
+    // Este formulario se cierra: el nuevo se abre desde la pantalla de abajo.
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    _showProductForm(navigator.context, product: clash);
+  }
 
   @override
   void dispose() {
@@ -428,7 +498,22 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
             Row(
               spacing: 14,
               children: [
-                Expanded(child: TextFormField(controller: _sku, decoration: const InputDecoration(labelText: 'Código (SKU)'))),
+                Expanded(
+                  child: TextFormField(
+                    controller: _sku,
+                    decoration: InputDecoration(
+                      labelText: 'Código (SKU)',
+                      suffixIcon: ScanButton(onScanned: _onScanned),
+                    ),
+                    validator: (v) {
+                      final code = (v ?? '').trim().toLowerCase();
+                      if (code.isEmpty) return null;
+                      final products = ref.read(productsProvider).value ?? const <Product>[];
+                      final clash = products.where((p) => p.id != widget.product?.id && p.sku?.toLowerCase() == code).firstOrNull;
+                      return clash == null ? null : 'Ya es de ${clash.name}';
+                    },
+                  ),
+                ),
                 Expanded(
                   child: DropdownButtonFormField<String?>(
                     isExpanded: true,
@@ -436,7 +521,11 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                     decoration: const InputDecoration(labelText: 'Proveedor'),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Sin proveedor')),
-                      for (final s in suppliers) DropdownMenuItem(value: s.id, child: Text(s.name, overflow: TextOverflow.ellipsis)),
+                      for (final s in suppliers)
+                        DropdownMenuItem(
+                          value: s.id,
+                          child: Text(s.name, overflow: TextOverflow.ellipsis),
+                        ),
                     ],
                     onChanged: (v) => setState(() => _supplierId = v),
                   ),
@@ -456,15 +545,15 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                   ),
                 ),
                 if (ref.watch(canProvider(Perm.inventoryCost)))
-                Expanded(
-                  child: TextFormField(
-                    controller: _cost,
-                    decoration: const InputDecoration(labelText: 'Costo', prefixText: '$currencySymbol '),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: const [MoneyInputFormatter()],
-                    validator: (v) => (v ?? '').trim().isEmpty ? null : money(v),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _cost,
+                      decoration: const InputDecoration(labelText: 'Costo', prefixText: '$currencySymbol '),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: const [MoneyInputFormatter()],
+                      validator: (v) => (v ?? '').trim().isEmpty ? null : money(v),
+                    ),
                   ),
-                ),
               ],
             ),
             Row(
@@ -570,7 +659,11 @@ class _StockDialogState extends ConsumerState<_StockDialog> {
               spacing: 8,
               children: [
                 ChoiceChip(label: const Text('Restar (merma)'), selected: _subtract, onSelected: (_) => setState(() => _subtract = true)),
-                ChoiceChip(label: const Text('Sumar (sobrante)'), selected: !_subtract, onSelected: (_) => setState(() => _subtract = false)),
+                ChoiceChip(
+                  label: const Text('Sumar (sobrante)'),
+                  selected: !_subtract,
+                  onSelected: (_) => setState(() => _subtract = false),
+                ),
               ],
             ),
             TextFormField(
@@ -598,8 +691,10 @@ class _StockDialogState extends ConsumerState<_StockDialog> {
   }
 }
 
-Future<void> _showSupplierForm(BuildContext context, {Supplier? supplier}) =>
-    showDialog(context: context, builder: (_) => _SupplierForm(supplier: supplier));
+Future<void> _showSupplierForm(BuildContext context, {Supplier? supplier}) => showDialog(
+  context: context,
+  builder: (_) => _SupplierForm(supplier: supplier),
+);
 
 class _SupplierForm extends ConsumerStatefulWidget {
   const _SupplierForm({this.supplier});
@@ -630,8 +725,15 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
     if (!_form.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
-      await ref.read(gymRepositoryProvider).saveSupplier(
-            SupplierInput(name: _name.text.trim(), phone: onlyDigits(_phone.text).isEmpty ? null : onlyDigits(_phone.text), email: _opt(_email), notes: _opt(_notes)),
+      await ref
+          .read(gymRepositoryProvider)
+          .saveSupplier(
+            SupplierInput(
+              name: _name.text.trim(),
+              phone: onlyDigits(_phone.text).isEmpty ? null : onlyDigits(_phone.text),
+              email: _opt(_email),
+              notes: _opt(_notes),
+            ),
             id: widget.supplier?.id,
           );
       refreshGymData(ref);
@@ -668,11 +770,27 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
             Row(
               spacing: 14,
               children: [
-                Expanded(child: TextFormField(controller: _phone, decoration: const InputDecoration(labelText: 'Teléfono', hintText: '0212-555-0101'), keyboardType: TextInputType.phone, inputFormatters: const [PhoneInputFormatter()])),
-                Expanded(child: TextFormField(controller: _email, decoration: const InputDecoration(labelText: 'Correo'))),
+                Expanded(
+                  child: TextFormField(
+                    controller: _phone,
+                    decoration: const InputDecoration(labelText: 'Teléfono', hintText: '0212-555-0101'),
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: const [PhoneInputFormatter()],
+                  ),
+                ),
+                Expanded(
+                  child: TextFormField(
+                    controller: _email,
+                    decoration: const InputDecoration(labelText: 'Correo'),
+                  ),
+                ),
               ],
             ),
-            TextFormField(controller: _notes, decoration: const InputDecoration(labelText: 'Notas'), maxLines: 2),
+            TextFormField(
+              controller: _notes,
+              decoration: const InputDecoration(labelText: 'Notas'),
+              maxLines: 2,
+            ),
           ],
         ),
       ),

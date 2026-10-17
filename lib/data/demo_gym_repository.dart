@@ -29,6 +29,9 @@ class DemoGymRepository implements GymRepository {
   final _products = <Product>[];
   final _sales = <Sale>[];
   final _purchases = <Purchase>[];
+
+  /// Fotos de comprobantes por ruta (equivale al bucket `payment-receipts`).
+  final _receipts = <String, Uint8List>{};
   final _workouts = <WorkoutLog>[];
 
   /// Stock inicial y ajustes (equivale a `stock_entries`).
@@ -47,12 +50,48 @@ class DemoGymRepository implements GymRepository {
 
   String currentUserId = ownerId;
   late final _staff = <StaffMember>[
-    StaffMember(userId: ownerId, fullName: r'Briann', role: StaffRole.owner, status: StaffStatus.active, hiredOn: DateTime(2026, 9, 1), email: 'dueno@workers.gym'),
-    StaffMember(userId: adminId, fullName: 'Mariana López', role: StaffRole.admin, status: StaffStatus.active, hiredOn: DateTime(2026, 9, 15), documentId: 'V-20114558', phone: '04145550101', email: 'mariana@workers.gym'),
-    StaffMember(userId: receptionId, fullName: 'Laura Rivas', role: StaffRole.reception, status: StaffStatus.active, hiredOn: DateTime(2026, 9, 20), documentId: 'V-26554120', phone: '04245550144', email: 'laura@workers.gym'),
-    StaffMember(userId: trainerId, fullName: 'Pedro Salazar', role: StaffRole.trainer, status: StaffStatus.active, hiredOn: DateTime(2026, 10, 1), documentId: 'V-23998710', phone: '04125550187', email: 'pedro@workers.gym'),
+    StaffMember(
+      userId: ownerId,
+      fullName: r'Briann',
+      role: StaffRole.owner,
+      status: StaffStatus.active,
+      hiredOn: DateTime(2026, 9, 1),
+      email: 'dueno@workers.gym',
+    ),
+    StaffMember(
+      userId: adminId,
+      fullName: 'Mariana López',
+      role: StaffRole.admin,
+      status: StaffStatus.active,
+      hiredOn: DateTime(2026, 9, 15),
+      documentId: 'V-20114558',
+      phone: '04145550101',
+      email: 'mariana@workers.gym',
+    ),
+    StaffMember(
+      userId: receptionId,
+      fullName: 'Laura Rivas',
+      role: StaffRole.reception,
+      status: StaffStatus.active,
+      hiredOn: DateTime(2026, 9, 20),
+      documentId: 'V-26554120',
+      phone: '04245550144',
+      email: 'laura@workers.gym',
+    ),
+    StaffMember(
+      userId: trainerId,
+      fullName: 'Pedro Salazar',
+      role: StaffRole.trainer,
+      status: StaffStatus.active,
+      hiredOn: DateTime(2026, 10, 1),
+      documentId: 'V-23998710',
+      phone: '04125550187',
+      email: 'pedro@workers.gym',
+    ),
   ];
-  final _rolePerms = {for (final e in defaultRolePermissions.entries) e.key: {...e.value}};
+  final _rolePerms = {
+    for (final e in defaultRolePermissions.entries) e.key: {...e.value},
+  };
   final _shifts = <String, List<StaffShift>>{
     receptionId: [for (var d = 1; d <= 5; d++) StaffShift(weekday: d, startMinutes: 6 * 60, endMinutes: 14 * 60)],
     trainerId: [for (var d = 1; d <= 6; d++) StaffShift(weekday: d, startMinutes: 14 * 60, endMinutes: 22 * 60)],
@@ -73,14 +112,16 @@ class DemoGymRepository implements GymRepository {
     if (!_can(permission)) throw const GymException('Tu rol no tiene permiso para esta acción.');
   }
 
-  void _log(String action, String entity, {String? id, Map<String, dynamic> detail = const {}}) => _audit.add(AuditEntry(
-        at: clock(),
-        userName: _me.fullName,
-        action: action,
-        entity: entity,
-        entityId: id,
-        detail: {...detail, if (entity == 'role_permissions') '_role': id},
-      ));
+  void _log(String action, String entity, {String? id, Map<String, dynamic> detail = const {}}) => _audit.add(
+    AuditEntry(
+      at: clock(),
+      userName: _me.fullName,
+      action: action,
+      entity: entity,
+      entityId: id,
+      detail: {...detail, if (entity == 'role_permissions') '_role': id},
+    ),
+  );
 
   String _id() => 'demo-${_nextId++}';
   DateTime get _today => dateOnly(_now);
@@ -89,10 +130,10 @@ class DemoGymRepository implements GymRepository {
     _methods.addAll(const [
       PaymentMethod(code: 'efectivo_usd', name: r'Efectivo ($)', currency: Currency.usd, position: 1),
       PaymentMethod(code: 'efectivo_bs', name: 'Efectivo (Bs.)', currency: Currency.ves, position: 2),
-      PaymentMethod(code: 'transferencia', name: 'Transferencia', currency: Currency.ves, position: 3),
-      PaymentMethod(code: 'pago_movil', name: 'Pago móvil', currency: Currency.ves, position: 4),
-      PaymentMethod(code: 'binance', name: 'Binance', currency: Currency.usd, position: 5),
-      PaymentMethod(code: 'zelle', name: 'Zelle', currency: Currency.usd, position: 6),
+      PaymentMethod(code: 'transferencia', name: 'Transferencia', currency: Currency.ves, position: 3, requiresReference: true),
+      PaymentMethod(code: 'pago_movil', name: 'Pago móvil', currency: Currency.ves, position: 4, requiresReference: true),
+      PaymentMethod(code: 'binance', name: 'Binance', currency: Currency.usd, position: 5, requiresReference: true),
+      PaymentMethod(code: 'zelle', name: 'Zelle', currency: Currency.usd, position: 6, requiresReference: true),
     ]);
     PaymentMethod method(String code) => _methods.firstWhere((m) => m.code == code);
     final rotation = [method('efectivo_usd'), method('pago_movil'), method('zelle'), method('transferencia')];
@@ -139,30 +180,38 @@ class DemoGymRepository implements GymRepository {
       final end = _today.add(Duration(days: left));
       final start = end.subtract(Duration(days: plan.durationDays - 1));
       final prevEnd = start.subtract(const Duration(days: 1));
-      for (final (k, (s, e)) in [
-        (prevEnd.subtract(Duration(days: plan.durationDays - 1)), prevEnd),
-        (start, end),
-      ].indexed) {
+      for (final (k, (s, e)) in [(prevEnd.subtract(Duration(days: plan.durationDays - 1)), prevEnd), (start, end)].indexed) {
         final paidAt = s.isAfter(_now) ? _now.subtract(Duration(hours: i + 1)) : DateTime(s.year, s.month, s.day, 8 + i % 10, 15);
         final m = rotation[(i + k) % rotation.length];
-        _payments.add(Payment(
-          id: _id(),
-          createdBy: i.isEven ? receptionId : adminId,
-          memberId: member.id,
-          memberName: name,
-          planId: plan.id,
-          planName: plan.name,
-          amountCents: plan.priceCents,
-          methodCode: m.code,
-          methodName: m.name,
-          periodStart: s,
-          periodEnd: e,
-          paidAt: paidAt,
-          currency: m.currency,
-          rate: m.inBolivares ? demoRate.value : null,
-          rateSource: m.inBolivares ? demoRate.source : null,
-          amountVesCents: m.inBolivares ? demoRate.vesCents(plan.priceCents) : null,
-        ));
+        _payments.add(
+          Payment(
+            id: _id(),
+            createdBy: i.isEven ? receptionId : adminId,
+            memberId: member.id,
+            memberName: name,
+            planId: plan.id,
+            planName: plan.name,
+            amountCents: plan.priceCents,
+            methodCode: m.code,
+            methodName: m.name,
+            periodStart: s,
+            periodEnd: e,
+            paidAt: paidAt,
+            currency: m.currency,
+            rate: m.inBolivares ? demoRate.value : null,
+            rateSource: m.inBolivares ? demoRate.source : null,
+            amountVesCents: m.inBolivares ? demoRate.vesCents(plan.priceCents) : null,
+            // Con referencia: los de hace más de 3 días ya se verificaron.
+            proof: !m.requiresReference
+                ? null
+                : PaymentProof(
+                    reference: '${(i * 7919 + k * 104729) % 90000000 + 10000000}',
+                    payerBank: m.inBolivares ? venezuelanBanks[(i + k) % 6] : null,
+                    payerId: member.phone,
+                    verifiedAt: _now.difference(paidAt).inDays > 3 ? paidAt.add(const Duration(hours: 5)) : null,
+                  ),
+          ),
+        );
       }
     }
 
@@ -184,7 +233,9 @@ class DemoGymRepository implements GymRepository {
       ('Guantes de entrenamiento', 'GUA-M', 1500, 750, 5, 2, null),
     ];
     for (final (name, sku, price, cost, _, min, supplier) in catalog) {
-      _products.add(Product(id: _id(), name: name, sku: sku, priceCents: price, costCents: cost, stock: 0, minStock: min, supplierId: supplier));
+      _products.add(
+        Product(id: _id(), name: name, sku: sku, priceCents: price, costCents: cost, stock: 0, minStock: min, supplierId: supplier),
+      );
     }
 
     // Ventas de ejemplo (índice de producto, cantidad): este mes y hoy, una anulada.
@@ -206,18 +257,27 @@ class DemoGymRepository implements GymRepository {
 
     // Compras de ejemplo que dejan el stock deseado tras las ventas:
     // compras − ventas = stock actual.
-    for (final (daysAgo, supplier, invoice) in [(12, drinks, 'A-0451'), (9, supplements, 'NS-2207'), (20, null, null)]) {
+    for (final (daysAgo, supplier, invoice, code) in [
+      (12, drinks, 'A-0451', 'transferencia'),
+      (9, supplements, 'NS-2207', 'zelle'),
+      (20, null, null, 'efectivo_usd'),
+    ]) {
       final lines = [
         for (final (i, (_, _, _, cost, target, _, s)) in catalog.indexed)
           if (s == supplier && target + (soldQty[i] ?? 0) > 0)
             PurchaseLine(product: _products[i], quantity: target + (soldQty[i] ?? 0), unitCostCents: cost),
       ];
-      _applyPurchase(NewPurchase(
-        lines: lines,
-        supplierId: supplier,
-        invoice: invoice,
-        purchasedOn: _today.subtract(Duration(days: daysAgo)),
-      ), createdAt: _now.subtract(Duration(days: daysAgo)));
+      _applyPurchase(
+        NewPurchase(
+          lines: lines,
+          supplierId: supplier,
+          invoice: invoice,
+          purchasedOn: _today.subtract(Duration(days: daysAgo)),
+          method: method(code),
+          rate: method(code).inBolivares ? demoRate : null,
+        ),
+        createdAt: _now.subtract(Duration(days: daysAgo)),
+      );
     }
 
     for (final (daysAgo, hour, lines, code, voided) in seedSales) {
@@ -234,21 +294,26 @@ class DemoGymRepository implements GymRepository {
           _setStock(item.productId, (s) => s - item.quantity);
         }
       }
-      _sales.add(Sale(
-        id: _id(),
-        createdBy: receptionId,
-        methodCode: m.code,
-        methodName: m.name,
-        totalCents: total,
-        soldAt: at,
-        items: items,
-        currency: m.currency,
-        rate: m.inBolivares ? demoRate.value : null,
-        rateSource: m.inBolivares ? demoRate.source : null,
-        totalVesCents: m.inBolivares ? demoRate.vesCents(total) : null,
-        voidedAt: voided ? at.add(const Duration(minutes: 5)) : null,
-        voidReason: voided ? 'Cobrado dos veces' : null,
-      ));
+      _sales.add(
+        Sale(
+          id: _id(),
+          createdBy: receptionId,
+          methodCode: m.code,
+          methodName: m.name,
+          totalCents: total,
+          soldAt: at,
+          items: items,
+          currency: m.currency,
+          rate: m.inBolivares ? demoRate.value : null,
+          rateSource: m.inBolivares ? demoRate.source : null,
+          totalVesCents: m.inBolivares ? demoRate.vesCents(total) : null,
+          voidedAt: voided ? at.add(const Duration(minutes: 5)) : null,
+          voidReason: voided ? 'Cobrado dos veces' : null,
+          proof: m.requiresReference
+              ? PaymentProof(reference: '${55000000 + daysAgo * 1311 + hour}', payerBank: m.inBolivares ? 'Banesco' : null)
+              : null,
+        ),
+      );
     }
 
     final todayStart = DateTime(_now.year, _now.month, _now.day, 6);
@@ -272,20 +337,22 @@ class DemoGymRepository implements GymRepository {
       for (var k = 0; k < 6; k++) {
         final (parts, types, notes) = split[(i + k) % split.length];
         final day = _today.subtract(Duration(days: k * 2 + i));
-        _workouts.add(WorkoutLog(
-          id: _id(),
-          memberId: m.id,
-          memberName: m.fullName,
-          trainedOn: day,
-          bodyParts: parts,
-          types: types,
-          durationMin: 50 + 5 * (k % 3),
-          effort: 2 + (k + i) % 3,
-          notes: notes,
-          createdBy: trainerId,
-          trainerName: trainer.fullName,
-          createdAt: day.add(const Duration(hours: 15)),
-        ));
+        _workouts.add(
+          WorkoutLog(
+            id: _id(),
+            memberId: m.id,
+            memberName: m.fullName,
+            trainedOn: day,
+            bodyParts: parts,
+            types: types,
+            durationMin: 50 + 5 * (k % 3),
+            effort: 2 + (k + i) % 3,
+            notes: notes,
+            createdBy: trainerId,
+            trainerName: trainer.fullName,
+            createdAt: day.add(const Duration(hours: 15)),
+          ),
+        );
       }
     }
   }
@@ -298,11 +365,16 @@ class DemoGymRepository implements GymRepository {
   /// Stock calculado desde los registros (igual que la vista SQL
   /// `product_stock_audit`): inicial ± ajustes + compras − ventas.
   Map<String, int> computedStock() => {
-        for (final p in _products)
-          p.id: _stockEntries.where((e) => e.$1 == p.id).fold<int>(0, (s, e) => s + e.$2) +
-              _purchases.where((x) => !x.voided).expand((x) => x.items).where((i) => i.productId == p.id).fold<int>(0, (s, i) => s + i.quantity) -
-              _sales.where((x) => !x.voided).expand((x) => x.items).where((i) => i.productId == p.id).fold<int>(0, (s, i) => s + i.quantity),
-      };
+    for (final p in _products)
+      p.id:
+          _stockEntries.where((e) => e.$1 == p.id).fold<int>(0, (s, e) => s + e.$2) +
+          _purchases
+              .where((x) => !x.voided)
+              .expand((x) => x.items)
+              .where((i) => i.productId == p.id)
+              .fold<int>(0, (s, i) => s + i.quantity) -
+          _sales.where((x) => !x.voided).expand((x) => x.items).where((i) => i.productId == p.id).fold<int>(0, (s, i) => s + i.quantity),
+  };
 
   DateTime? _lastPeriodEnd(String memberId) {
     DateTime? last;
@@ -313,21 +385,18 @@ class DemoGymRepository implements GymRepository {
   }
 
   Member _withOverview(Member m) {
-    final mine = _payments.where((p) => p.memberId == m.id && !p.voided).toList()
-      ..sort((a, b) => b.periodEnd.compareTo(a.periodEnd));
+    final mine = _payments.where((p) => p.memberId == m.id && !p.voided).toList()..sort((a, b) => b.periodEnd.compareTo(a.periodEnd));
     return mine.isEmpty ? m : m.copyWith(expiresOn: mine.first.periodEnd, planName: mine.first.planName);
   }
 
-  static bool _inRange(DateTime t, DateTime? from, DateTime? to) =>
-      (from == null || !t.isBefore(from)) && (to == null || t.isBefore(to));
+  static bool _inRange(DateTime t, DateTime? from, DateTime? to) => (from == null || !t.isBefore(from)) && (to == null || t.isBefore(to));
 
   // -------------------------------------------------------------------------
   // Clientes
 
   @override
-  Future<List<Member>> members() async => !_can(Perm.membersView)
-      ? <Member>[]
-      : (_members.map(_withOverview).toList()..sort((a, b) => a.fullName.compareTo(b.fullName)));
+  Future<List<Member>> members() async =>
+      !_can(Perm.membersView) ? <Member>[] : (_members.map(_withOverview).toList()..sort((a, b) => a.fullName.compareTo(b.fullName)));
 
   @override
   Future<Member> createMember(MemberInput input) async {
@@ -376,8 +445,10 @@ class DemoGymRepository implements GymRepository {
   }
 
   @override
-  Future<Map<String, ImageProvider>> memberPhotos(List<Member> members) async =>
-      {for (final m in members) if (_photos[m.id] case final bytes?) m.id: MemoryImage(bytes)};
+  Future<Map<String, ImageProvider>> memberPhotos(List<Member> members) async => {
+    for (final m in members)
+      if (_photos[m.id] case final bytes?) m.id: MemoryImage(bytes),
+  };
 
   @override
   Future<void> setMemberPhoto(Member member, Uint8List bytes, {String mimeType = 'image/jpeg'}) async {
@@ -397,8 +468,8 @@ class DemoGymRepository implements GymRepository {
   // Planes, métodos de pago, ajustes
 
   @override
-  Future<List<Plan>> plans() async => List.of(_plans)
-    ..sort((a, b) => a.active != b.active ? (a.active ? -1 : 1) : a.durationDays.compareTo(b.durationDays));
+  Future<List<Plan>> plans() async =>
+      List.of(_plans)..sort((a, b) => a.active != b.active ? (a.active ? -1 : 1) : a.durationDays.compareTo(b.durationDays));
 
   @override
   Future<void> savePlan(PlanInput input, {String? id}) async {
@@ -438,6 +509,35 @@ class DemoGymRepository implements GymRepository {
   }
 
   @override
+  Future<void> setPaymentMethodRequiresReference(String code, bool requires) async {
+    _require(Perm.settingsManage);
+    final i = _methods.indexWhere((m) => m.code == code);
+    _methods[i] = _methods[i].copyWith(requiresReference: requires);
+  }
+
+  /// Igual que `private.clean_proof`: exige la referencia si el método la pide
+  /// y no deja repetir la misma referencia del mismo banco.
+  PaymentProof? _cleanProof(PaymentMethod method, ProofInput proof) {
+    final problem = proof.problemFor(method);
+    if (problem != null) throw GymException(problem);
+    final ref = proof.cleanReference;
+    if (ref == null) {
+      return proof.cleanBank == null && proof.cleanPayerId == null
+          ? null
+          : PaymentProof(payerBank: proof.cleanBank, payerId: proof.cleanPayerId);
+    }
+    bool same(String code, PaymentProof? p, bool voided) =>
+        !voided &&
+        code == method.code &&
+        p?.reference?.toLowerCase() == ref.toLowerCase() &&
+        (p?.payerBank ?? '') == (proof.cleanBank ?? '');
+    if (_payments.any((p) => same(p.methodCode, p.proof, p.voided)) || _sales.any((s) => same(s.methodCode, s.proof, s.voided))) {
+      throw GymException('La referencia $ref ya está registrada en otro pago');
+    }
+    return PaymentProof(reference: ref, payerBank: proof.cleanBank, payerId: proof.cleanPayerId);
+  }
+
+  @override
   Future<GymSettings> settings() async => _settings;
 
   @override
@@ -462,9 +562,9 @@ class DemoGymRepository implements GymRepository {
   Future<List<Payment>> payments({String? memberId, DateTime? from, DateTime? to, int limit = 300}) async => !_can(Perm.paymentsView)
       ? <Payment>[]
       : (_payments.where((p) => (memberId == null || p.memberId == memberId) && _inRange(p.paidAt, from, to)).toList()
-            ..sort((a, b) => b.paidAt.compareTo(a.paidAt)))
-          .take(limit)
-          .toList();
+              ..sort((a, b) => b.paidAt.compareTo(a.paidAt)))
+            .take(limit)
+            .toList();
 
   /// Igual que `register_payment` en SQL: recalcula el periodo con el estado actual.
   @override
@@ -474,15 +574,12 @@ class DemoGymRepository implements GymRepository {
     if (!plan.active) throw const GymException('El plan no existe o está archivado');
     final method = _activeMethod(p.method.code);
     if (method.inBolivares && p.rate == null) throw const GymException('Falta la tasa de cambio para cobrar en bolívares');
+    final proof = _cleanProof(method, p.proof);
     final m = _members.indexWhere((x) => x.id == p.member.id);
     if (m < 0) throw const GymException('El cliente no existe');
     // Cobrarle a un inactivo lo reactiva.
     if (!_members[m].active) _members[m] = _members[m].copyWith(active: true);
-    final period = renewalPeriod(
-      currentExpiresOn: _lastPeriodEnd(p.member.id),
-      today: p.today,
-      durationDays: plan.durationDays,
-    );
+    final period = renewalPeriod(currentExpiresOn: _lastPeriodEnd(p.member.id), today: p.today, durationDays: plan.durationDays);
     final payment = Payment(
       id: _id(),
       memberId: p.member.id,
@@ -500,6 +597,7 @@ class DemoGymRepository implements GymRepository {
       rateSource: method.inBolivares ? p.rate!.source : null,
       amountVesCents: method.inBolivares ? p.rate!.vesCents(plan.priceCents) : null,
       createdBy: currentUserId,
+      proof: proof,
     );
     _payments.add(payment);
     return payment;
@@ -520,20 +618,13 @@ class DemoGymRepository implements GymRepository {
 
   @override
   Future<List<Attendance>> attendanceSince(DateTime from) async =>
-      _attendance.where((a) => !a.checkedInAt.isBefore(from)).toList()
-        ..sort((a, b) => b.checkedInAt.compareTo(a.checkedInAt));
+      _attendance.where((a) => !a.checkedInAt.isBefore(from)).toList()..sort((a, b) => b.checkedInAt.compareTo(a.checkedInAt));
 
   @override
   Future<void> checkIn(String memberId, {CheckInMethod method = CheckInMethod.manual}) async {
     _require(Perm.attendanceCreate);
     final m = _members.firstWhere((m) => m.id == memberId);
-    _attendance.add(Attendance(
-      id: _id(),
-      memberId: memberId,
-      memberName: m.fullName,
-      checkedInAt: clock(),
-      method: method,
-    ));
+    _attendance.add(Attendance(id: _id(), memberId: memberId, memberName: m.fullName, checkedInAt: clock(), method: method));
   }
 
   // -------------------------------------------------------------------------
@@ -626,17 +717,22 @@ class DemoGymRepository implements GymRepository {
   @override
   Future<List<Sale>> sales({DateTime? from, DateTime? to, int limit = 200}) async => !_can(Perm.storeSell) && !_can(Perm.cashAll)
       ? <Sale>[]
-      : (_sales.where((s) => _inRange(s.soldAt, from, to)).toList()..sort((a, b) => b.soldAt.compareTo(a.soldAt)))
-          .take(limit)
-          .toList();
+      : (_sales.where((s) => _inRange(s.soldAt, from, to)).toList()..sort((a, b) => b.soldAt.compareTo(a.soldAt))).take(limit).toList();
 
   /// Igual que `register_sale` en SQL: todo o nada, precios desde el catálogo.
   @override
-  Future<String> registerSale(List<CartLine> lines, PaymentMethod method, {String? memberId, ExchangeRate? rate}) async {
+  Future<String> registerSale(
+    List<CartLine> lines,
+    PaymentMethod method, {
+    String? memberId,
+    ExchangeRate? rate,
+    ProofInput proof = const ProofInput(),
+  }) async {
     _require(Perm.storeSell);
     if (lines.isEmpty) throw const GymException('La venta no tiene productos');
     final m = _activeMethod(method.code);
     if (m.inBolivares && rate == null) throw const GymException('Falta la tasa de cambio para cobrar en bolívares');
+    final cleanProof = _cleanProof(m, proof);
     final qty = <String, int>{};
     for (final l in lines) {
       qty[l.product.id] = (qty[l.product.id] ?? 0) + l.quantity;
@@ -666,6 +762,7 @@ class DemoGymRepository implements GymRepository {
       rateSource: m.inBolivares ? rate!.source : null,
       totalVesCents: m.inBolivares ? rate!.vesCents(total) : null,
       createdBy: currentUserId,
+      proof: cleanProof,
     );
     _sales.add(sale);
     return sale.id;
@@ -690,17 +787,20 @@ class DemoGymRepository implements GymRepository {
   @override
   Future<List<Purchase>> purchases({DateTime? from, DateTime? to, int limit = 200}) async => !_can(Perm.purchasesView)
       ? <Purchase>[]
-      : (_purchases
-          .where((p) => _inRange(p.purchasedOn, from == null ? null : dateOnly(from), to == null ? null : dateOnly(to)))
-          .toList()
-        ..sort((a, b) => b.purchasedOn != a.purchasedOn ? b.purchasedOn.compareTo(a.purchasedOn) : b.createdAt.compareTo(a.createdAt)))
-      .take(limit)
-      .toList();
+      : (_purchases.where((p) => _inRange(p.purchasedOn, from == null ? null : dateOnly(from), to == null ? null : dateOnly(to))).toList()
+              ..sort(
+                (a, b) => b.purchasedOn != a.purchasedOn ? b.purchasedOn.compareTo(a.purchasedOn) : b.createdAt.compareTo(a.createdAt),
+              ))
+            .take(limit)
+            .toList();
 
   /// Igual que `register_purchase` en SQL: suma stock y actualiza el costo.
   @override
   Future<String> registerPurchase(NewPurchase p) async {
     _require(Perm.inventoryManage);
+    if (p.method != null && p.method!.inBolivares && p.rate == null) {
+      throw const GymException('Falta la tasa de cambio para registrar un pago en bolívares');
+    }
     return _applyPurchase(p, createdAt: clock()).id;
   }
 
@@ -725,6 +825,13 @@ class DemoGymRepository implements GymRepository {
           PurchaseItem(productId: l.product.id, productName: l.product.name, quantity: l.quantity, unitCostCents: l.unitCostCents),
       ],
       createdAt: createdAt,
+      methodCode: p.method?.code,
+      methodName: p.method?.name,
+      currency: p.method?.currency ?? Currency.usd,
+      rate: p.method != null && p.method!.inBolivares ? p.rate?.value : null,
+      rateSource: p.method != null && p.method!.inBolivares ? p.rate?.source : null,
+      totalVesCents: p.totalVesCents,
+      paymentReference: (p.paymentReference ?? '').trim().isEmpty ? null : p.paymentReference!.trim(),
     );
     _purchases.add(purchase);
     return purchase;
@@ -752,29 +859,85 @@ class DemoGymRepository implements GymRepository {
   }
 
   // -------------------------------------------------------------------------
+  // Comprobantes (mismas reglas que attach_receipt y set_payment_verified)
+
+  ({PaymentProof? proof, String? owner}) _proofOf(ProofKind kind, String id) {
+    if (kind == ProofKind.payment) {
+      final p = _payments.where((p) => p.id == id && !p.voided).firstOrNull;
+      if (p == null) throw const GymException('El pago no existe o está anulado');
+      return (proof: p.proof, owner: p.createdBy);
+    }
+    final s = _sales.where((s) => s.id == id && !s.voided).firstOrNull;
+    if (s == null) throw const GymException('El pago no existe o está anulado');
+    return (proof: s.proof, owner: s.createdBy);
+  }
+
+  void _setProof(ProofKind kind, String id, PaymentProof proof) {
+    if (kind == ProofKind.payment) {
+      final i = _payments.indexWhere((p) => p.id == id);
+      _payments[i] = _payments[i].withProof(proof);
+    } else {
+      final i = _sales.indexWhere((s) => s.id == id);
+      _sales[i] = _sales[i].withProof(proof);
+    }
+  }
+
+  @override
+  Future<String> attachReceipt(ProofKind kind, String id, Uint8List bytes, {String mimeType = 'image/jpeg'}) async {
+    _require(kind == ProofKind.payment ? Perm.paymentsCreate : Perm.storeSell);
+    final current = _proofOf(kind, id);
+    if (current.proof?.receiptPath != null && current.owner != currentUserId && !_can(Perm.paymentsVerify)) {
+      throw const GymException('Este pago ya tiene comprobante; solo quien lo cobró o un verificador puede cambiarlo');
+    }
+    final path = '${kind.folder}/$id/${_nextId++}.jpg';
+    _receipts[path] = bytes;
+    _setProof(kind, id, (current.proof ?? const PaymentProof()).copyWith(receiptPath: () => path));
+    _log('payment.receipt', kind.folder, id: id);
+    return path;
+  }
+
+  @override
+  Future<ImageProvider> receiptImage(String path) async {
+    final bytes = _receipts[path];
+    if (bytes == null) throw const GymException('No se encontró la foto del comprobante');
+    return MemoryImage(bytes);
+  }
+
+  @override
+  Future<void> setPaymentVerified(ProofKind kind, String id, bool verified) async {
+    _require(Perm.paymentsVerify);
+    final current = _proofOf(kind, id);
+    _setProof(kind, id, (current.proof ?? const PaymentProof()).copyWith(verifiedAt: () => verified ? clock() : null));
+    _log(verified ? 'payment.verify' : 'payment.unverify', kind.folder, id: id);
+  }
+
+  // -------------------------------------------------------------------------
   // Entrenos (mismas reglas que guard_workout_logs)
 
   @override
   Future<List<WorkoutLog>> workouts({String? memberId, DateTime? from, int limit = 300}) async {
     if (!_can(Perm.workoutsView)) return const [];
-    final list = _workouts
-        .where((w) => (memberId == null || w.memberId == memberId) && (from == null || !w.trainedOn.isBefore(dateOnly(from))))
-        .map((w) => WorkoutLog(
-              id: w.id,
-              memberId: w.memberId,
-              memberName: _members.where((m) => m.id == w.memberId).firstOrNull?.fullName,
-              trainedOn: w.trainedOn,
-              bodyParts: w.bodyParts,
-              types: w.types,
-              durationMin: w.durationMin,
-              effort: w.effort,
-              notes: w.notes,
-              createdBy: w.createdBy,
-              trainerName: w.trainerName,
-              createdAt: w.createdAt,
-            ))
-        .toList()
-      ..sort((a, b) => a.trainedOn != b.trainedOn ? b.trainedOn.compareTo(a.trainedOn) : b.createdAt.compareTo(a.createdAt));
+    final list =
+        _workouts
+            .where((w) => (memberId == null || w.memberId == memberId) && (from == null || !w.trainedOn.isBefore(dateOnly(from))))
+            .map(
+              (w) => WorkoutLog(
+                id: w.id,
+                memberId: w.memberId,
+                memberName: _members.where((m) => m.id == w.memberId).firstOrNull?.fullName,
+                trainedOn: w.trainedOn,
+                bodyParts: w.bodyParts,
+                types: w.types,
+                durationMin: w.durationMin,
+                effort: w.effort,
+                notes: w.notes,
+                createdBy: w.createdBy,
+                trainerName: w.trainerName,
+                createdAt: w.createdAt,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.trainedOn != b.trainedOn ? b.trainedOn.compareTo(a.trainedOn) : b.createdAt.compareTo(a.createdAt));
     return list.take(limit).toList();
   }
 
@@ -859,9 +1022,8 @@ class DemoGymRepository implements GymRepository {
   Future<List<StaffMember>> staffDirectory() async {
     _require(Perm.staffView);
     StaffTimeEntry? openOf(String id) => _timeEntries.where((e) => e.userId == id && e.open).firstOrNull;
-    return [
-      for (final s in _staff) s.copyWith(onShiftSince: openOf(s.userId)?.clockIn, clearShift: openOf(s.userId) == null),
-    ]..sort((a, b) => a.active != b.active ? (a.active ? -1 : 1) : a.fullName.compareTo(b.fullName));
+    return [for (final s in _staff) s.copyWith(onShiftSince: openOf(s.userId)?.clockIn, clearShift: openOf(s.userId) == null)]
+      ..sort((a, b) => a.active != b.active ? (a.active ? -1 : 1) : a.fullName.compareTo(b.fullName));
   }
 
   @override
@@ -873,17 +1035,19 @@ class DemoGymRepository implements GymRepository {
       throw const GymException('Ya hay otra persona del personal con esa cédula');
     }
     final id = 'demo-staff-${_id()}';
-    _staff.add(StaffMember(
-      userId: id,
-      fullName: n.input.fullName,
-      role: n.input.role,
-      status: StaffStatus.active,
-      hiredOn: n.input.hiredOn ?? dateOnly(clock()),
-      documentId: n.input.documentId,
-      phone: n.input.phone,
-      email: n.email.toLowerCase(),
-      notes: n.input.notes,
-    ));
+    _staff.add(
+      StaffMember(
+        userId: id,
+        fullName: n.input.fullName,
+        role: n.input.role,
+        status: StaffStatus.active,
+        hiredOn: n.input.hiredOn ?? dateOnly(clock()),
+        documentId: n.input.documentId,
+        phone: n.input.phone,
+        email: n.email.toLowerCase(),
+        notes: n.input.notes,
+      ),
+    );
     _log('staff.create', 'staff', id: id, detail: {'name': n.input.fullName, 'role': n.input.role.code});
     return id;
   }
@@ -937,7 +1101,9 @@ class DemoGymRepository implements GymRepository {
   Future<List<PermissionInfo>> permissions() async => permissionCatalog;
 
   @override
-  Future<Map<StaffRole, Set<String>>> rolePermissions() async => {for (final e in _rolePerms.entries) e.key: {...e.value}};
+  Future<Map<StaffRole, Set<String>>> rolePermissions() async => {
+    for (final e in _rolePerms.entries) e.key: {...e.value},
+  };
 
   @override
   Future<void> setRolePermission(StaffRole role, String permission, bool enabled) async {

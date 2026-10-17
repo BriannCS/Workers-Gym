@@ -286,6 +286,10 @@ void main() {
     await tester.pumpAndSettle();
     // Mensual $30 × 800 (BCV dólar de prueba) = Bs. 24.000,00
     expect(find.text('Bs. 24.000,00'), findsOneWidget);
+    // Pago móvil pide la referencia: sin ella no se puede cobrar.
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Cobrar Bs. 24.000,00')).onPressed, isNull);
+    await tester.enterText(find.widgetWithText(TextField, 'Referencia *'), '0412 5566');
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Cobrar Bs. 24.000,00'));
     await tester.pumpAndSettle();
 
@@ -293,6 +297,8 @@ void main() {
     expect(paid.methodCode, 'pago_movil');
     expect(paid.amountVesCents, 2400000);
     expect(paid.rateSource, RateSource.bcvUsd);
+    expect(paid.proof?.reference, '04125566');
+    expect(paid.proof?.verified, isFalse);
   });
 
   testWidgets('registrar una compra suma al stock', (tester) async {
@@ -307,15 +313,26 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.descendant(of: find.byType(DropdownMenu<Product>), matching: find.byType(TextField)), 'Shaker');
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(MenuItemButton, 'Shaker 700 ml').last); // la primera es la copia de medición
+    await tester.tap(find.widgetWithText(MenuItemButton, 'Shaker 700 ml · SHK-700').last); // la primera es la copia de medición
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextFormField, 'Cant.'), '12');
     await tester.pumpAndSettle();
+    // Sin método de pago no se registra.
     await tester.tap(find.widgetWithText(FilledButton, r'Registrar $42,00')); // 12 × $3,50
+    await tester.pumpAndSettle();
+    expect(find.text('Indica con qué se le pagó al proveedor'), findsOneWidget);
+    final dialog = find.byType(FormDialog);
+    await tester.ensureVisible(find.descendant(of: dialog, matching: find.text('Efectivo (Bs.)')));
+    await tester.tap(find.descendant(of: dialog, matching: find.text('Efectivo (Bs.)')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Registrar Bs. 33.600,00')); // $42 × 800
     await tester.pumpAndSettle();
 
     expect((await repo.products()).firstWhere((p) => p.name == 'Shaker 700 ml').stock, before + 12);
-    expect((await repo.purchases()).first.totalCents, 4200);
+    final purchase = (await repo.purchases()).first;
+    expect(purchase.totalCents, 4200);
+    expect(purchase.methodCode, 'efectivo_bs');
+    expect(purchase.totalVesCents, 3360000);
   });
 
   testWidgets('un método agregado en Ajustes aparece al cobrar', (tester) async {

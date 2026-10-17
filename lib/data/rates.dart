@@ -31,9 +31,7 @@ class RatesClient {
 
   Future<ExchangeRate?> _one(RateSource source, String path) async {
     try {
-      final res = await _http
-          .get(Uri.parse('$_base$path'), headers: {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 8));
+      final res = await _http.get(Uri.parse('$_base$path'), headers: {'Accept': 'application/json'}).timeout(const Duration(seconds: 8));
       if (res.statusCode != 200) return null;
       return parseDolarApi(source, jsonDecode(res.body) as Map<String, dynamic>);
     } catch (_) {

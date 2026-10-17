@@ -120,7 +120,14 @@ void main() {
     test('guarda la tasa y el monto en Bs.', () async {
       final luis = await member('Luis');
       final monthly = (await repo.plans()).firstWhere((p) => p.name == 'Mensual');
-      final paid = await repo.addPayment(NewPayment.renewal(member: luis, plan: monthly, method: pagoMovil, today: testNow, rate: rate));
+      final paid = await repo.addPayment(NewPayment.renewal(
+        member: luis,
+        plan: monthly,
+        method: pagoMovil,
+        today: testNow,
+        rate: rate,
+        proof: const ProofInput(reference: '12345678', payerBank: 'Banesco'),
+      ));
       expect(paid.currency, Currency.ves);
       expect(paid.rate, 800);
       expect(paid.amountVesCents, 2400000); // $30 × 800 = Bs. 24.000
@@ -138,7 +145,7 @@ void main() {
 
     test('venta en Bs. con el total convertido', () async {
       final agua = await product('Agua mineral 600 ml');
-      await repo.registerSale([CartLine(agua, 2)], pagoMovil, rate: rate);
+      await repo.registerSale([CartLine(agua, 2)], pagoMovil, rate: rate, proof: const ProofInput(reference: '87654321'));
       final sale = (await repo.sales()).first;
       expect(sale.totalCents, 200);
       expect(sale.totalVesCents, 160000);

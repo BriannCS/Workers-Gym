@@ -23,31 +23,33 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final manage = ref.watch(canProvider(Perm.settingsManage));
     return PageBody(
-      header: PageHeader(
-        title: 'Ajustes',
-        subtitle: manage ? 'Apariencia, tasa de cambio y métodos de pago' : 'Tu cuenta y la apariencia',
-      ),
+      header: PageHeader(title: 'Ajustes', subtitle: manage ? 'Apariencia, tasa de cambio y métodos de pago' : 'Tu cuenta y la apariencia'),
       children: [
-        LayoutBuilder(builder: (context, c) {
-          const rate = _RateSection();
-          const methods = _MethodsSection();
-          const look = _AppearanceSection();
-          const account = _AccountSection();
-          if (!manage) {
-            return const Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [account, look]);
-          }
-          if (c.maxWidth < 980) {
-            return const Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [rate, methods, look, account]);
-          }
-          return const Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 28,
-            children: [
-              Expanded(flex: 6, child: rate),
-              Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [methods, look, account])),
-            ],
-          );
-        }),
+        LayoutBuilder(
+          builder: (context, c) {
+            const rate = _RateSection();
+            const methods = _MethodsSection();
+            const look = _AppearanceSection();
+            const account = _AccountSection();
+            if (!manage) {
+              return const Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [account, look]);
+            }
+            if (c.maxWidth < 980) {
+              return const Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [rate, methods, look, account]);
+            }
+            return const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 28,
+              children: [
+                Expanded(flex: 6, child: rate),
+                Expanded(
+                  flex: 5,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 28, children: [methods, look, account]),
+                ),
+              ],
+            );
+          },
+        ),
         const Padding(
           padding: EdgeInsets.only(top: 12),
           child: Column(children: [BrandMark(size: 56), SizedBox(height: 8), BrandSignature()]),
@@ -82,7 +84,10 @@ class _AppearanceSection extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(forDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined, color: forDark ? const Color(0xFFF0EBE0) : const Color(0xFF17140F)),
+                  Icon(
+                    forDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+                    color: forDark ? const Color(0xFFF0EBE0) : const Color(0xFF17140F),
+                  ),
                   const SizedBox(height: 10),
                   Text(title.toUpperCase(), style: AppText.score(22, color: forDark ? const Color(0xFFF0EBE0) : const Color(0xFF17140F))),
                   Text(text, style: TextStyle(fontSize: 12, color: forDark ? const Color(0xFFA89E8D) : const Color(0xFF5E574C))),
@@ -157,9 +162,7 @@ class _RateSectionState extends ConsumerState<_RateSection> {
           side: const BorderSide(color: AppColors.ink, width: 1.3),
         ),
         child: InkWell(
-          onTap: selected || _busy || rate == null
-              ? null
-              : () => _save(GymSettings(rateSource: source, manualRate: settings.manualRate)),
+          onTap: selected || _busy || rate == null ? null : () => _save(GymSettings(rateSource: source, manualRate: settings.manualRate)),
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Column(
@@ -168,7 +171,10 @@ class _RateSectionState extends ConsumerState<_RateSection> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(source.label.toUpperCase(), style: AppText.label.copyWith(color: selected ? AppColors.surface : AppColors.ink)),
+                      child: Text(
+                        source.label.toUpperCase(),
+                        style: AppText.label.copyWith(color: selected ? AppColors.surface : AppColors.ink),
+                      ),
                     ),
                     if (selected) const Icon(Icons.check_circle, size: 18, color: AppColors.plateYellow),
                   ],
@@ -179,7 +185,9 @@ class _RateSectionState extends ConsumerState<_RateSection> {
                   style: AppText.score(32, color: selected ? AppColors.surface : AppColors.ink),
                 ),
                 Text(
-                  rate?.updatedAt == null ? 'Bs. por ${source == RateSource.bcvEur ? 'euro' : 'dólar'}' : 'Act. ${formatShortDate(rate!.updatedAt!)} ${formatTime(rate.updatedAt!)}',
+                  rate?.updatedAt == null
+                      ? 'Bs. por ${source == RateSource.bcvEur ? 'euro' : 'dólar'}'
+                      : 'Act. ${formatShortDate(rate!.updatedAt!)} ${formatTime(rate.updatedAt!)}',
                   style: AppText.mono(size: 11, color: selected ? AppColors.plateYellow : AppColors.textMuted),
                 ),
               ],
@@ -209,11 +217,16 @@ class _RateSectionState extends ConsumerState<_RateSection> {
           ResponsiveGrid(
             minItemWidth: 150,
             spacing: 12,
-            children: [for (final s in [RateSource.bcvUsd, RateSource.bcvEur, RateSource.paralelo]) card(s)],
+            children: [
+              for (final s in [RateSource.bcvUsd, RateSource.bcvEur, RateSource.paralelo]) card(s),
+            ],
           ),
           if (fetched.hasValue && rates.isEmpty) ...[
             const SizedBox(height: 10),
-            Text('No se pudo consultar la API (¿sin conexión?). Puedes usar una tasa manual.', style: AppText.muted.copyWith(color: AppColors.danger)),
+            Text(
+              'No se pudo consultar la API (¿sin conexión?). Puedes usar una tasa manual.',
+              style: AppText.muted.copyWith(color: AppColors.danger),
+            ),
           ],
           const SizedBox(height: 18),
           Container(
@@ -303,37 +316,59 @@ class _MethodsSectionState extends ConsumerState<_MethodsSection> {
     final removed = all.where((m) => !m.active).toList();
 
     Widget row(PaymentMethod m) => Container(
-          padding: const EdgeInsets.fromLTRB(4, 6, 0, 6),
-          decoration: const BoxDecoration(border: rowRule),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                alignment: Alignment.center,
-                color: m.inBolivares ? AppColors.plateBlue : AppColors.plateGreen,
-                child: Text(m.currency.symbol, style: AppText.mono(size: 11, weight: FontWeight.w600, color: AppColors.surface)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  m.name,
-                  style: TextStyle(fontWeight: FontWeight.w600, color: m.active ? null : AppColors.textMuted),
-                ),
-              ),
-              if (m.active)
-                TextButton(
-                  onPressed: _busy || active.length == 1 ? null : () => _run(() => repo.setPaymentMethodActive(m.code, false), '${m.name} quitado'),
-                  child: const Text('Quitar'),
-                )
-              else
-                TextButton(
-                  onPressed: _busy ? null : () => _run(() => repo.setPaymentMethodActive(m.code, true), '${m.name} restaurado'),
-                  child: const Text('Restaurar'),
-                ),
-            ],
+      padding: const EdgeInsets.fromLTRB(4, 6, 0, 6),
+      decoration: const BoxDecoration(border: rowRule),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            alignment: Alignment.center,
+            color: m.inBolivares ? AppColors.plateBlue : AppColors.plateGreen,
+            child: Text(
+              m.currency.symbol,
+              style: AppText.mono(size: 11, weight: FontWeight.w600, color: AppColors.surface),
+            ),
           ),
-        );
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              m.name,
+              style: TextStyle(fontWeight: FontWeight.w600, color: m.active ? null : AppColors.textMuted),
+            ),
+          ),
+          if (m.active)
+            Tooltip(
+              message: m.requiresReference
+                  ? 'Pide referencia y comprobante al cobrar. Toca para no pedirla.'
+                  : 'No pide referencia. Toca para pedirla al cobrar.',
+              child: FilterChip(
+                label: const Text('Pide ref.'),
+                selected: m.requiresReference,
+                visualDensity: VisualDensity.compact,
+                onSelected: _busy
+                    ? null
+                    : (v) => _run(
+                        () => repo.setPaymentMethodRequiresReference(m.code, v),
+                        v ? '${m.name}: pedirá referencia' : '${m.name}: ya no pide referencia',
+                      ),
+              ),
+            ),
+          if (m.active)
+            TextButton(
+              onPressed: _busy || active.length == 1
+                  ? null
+                  : () => _run(() => repo.setPaymentMethodActive(m.code, false), '${m.name} quitado'),
+              child: const Text('Quitar'),
+            )
+          else
+            TextButton(
+              onPressed: _busy ? null : () => _run(() => repo.setPaymentMethodActive(m.code, true), '${m.name} restaurado'),
+              child: const Text('Restaurar'),
+            ),
+        ],
+      ),
+    );
 
     return Panel(
       title: 'Métodos de pago · ${active.length}',
@@ -355,8 +390,16 @@ class _MethodsSectionState extends ConsumerState<_MethodsSection> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              ChoiceChip(label: const Text('En dólares'), selected: _currency == Currency.usd, onSelected: (_) => setState(() => _currency = Currency.usd)),
-              ChoiceChip(label: const Text('En bolívares'), selected: _currency == Currency.ves, onSelected: (_) => setState(() => _currency = Currency.ves)),
+              ChoiceChip(
+                label: const Text('En dólares'),
+                selected: _currency == Currency.usd,
+                onSelected: (_) => setState(() => _currency = Currency.usd),
+              ),
+              ChoiceChip(
+                label: const Text('En bolívares'),
+                selected: _currency == Currency.ves,
+                onSelected: (_) => setState(() => _currency = Currency.ves),
+              ),
               FilledButton.icon(
                 onPressed: _busy ? null : () => _add(repo),
                 icon: const Icon(Icons.add, size: 18),
@@ -405,7 +448,9 @@ class _AccountSection extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text(me.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16))),
+              Expanded(
+                child: Text(me.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+              ),
               RoleBadge(me.role),
             ],
           ),

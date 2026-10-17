@@ -9,13 +9,24 @@ import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
 import '../../domain/staff.dart';
 import 'payment_dialog.dart';
+import 'proof_widgets.dart';
 
 /// Libro de pagos de membresías.
-class PaymentsScreen extends ConsumerWidget {
+class PaymentsScreen extends ConsumerStatefulWidget {
   const PaymentsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PaymentsScreen> createState() => _PaymentsScreenState();
+}
+
+/// Pago con referencia aún no confirmado contra el banco.
+bool _pendingVerification(Payment p) => !p.voided && p.proof?.reference != null && !p.proof!.verified;
+
+class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
+  bool _onlyPending = false;
+
+  @override
+  Widget build(BuildContext context) {
     final today = ref.watch(clockProvider)();
     final payments = ref.watch(paymentsProvider);
     final valid = (payments.value ?? const <Payment>[]).where((p) => !p.voided);
@@ -42,32 +53,57 @@ class PaymentsScreen extends ConsumerWidget {
       children: [
         // Los totales son ingresos: solo con permiso (recepción no los ve).
         if (ref.watch(canProvider(Perm.dashboardMoney))) ...[
-          ScoreBoard(scores: [
-            Score(label: 'Hoy', value: formatMoney(total(todays)), caption: '${todays.length} pagos', color: AppColors.plateBlue),
-            Score(label: 'Este mes', value: formatMoney(total(thisMonth)), caption: '${thisMonth.length} pagos', color: AppColors.success),
-            Score(label: 'Mes anterior', value: formatMoney(total(lastMonth)), caption: '${lastMonth.length} pagos'),
-          ]),
+          ScoreBoard(
+            scores: [
+              Score(label: 'Hoy', value: formatMoney(total(todays)), caption: '${todays.length} pagos', color: AppColors.plateBlue),
+              Score(
+                label: 'Este mes',
+                value: formatMoney(total(thisMonth)),
+                caption: '${thisMonth.length} pagos',
+                color: AppColors.success,
+              ),
+              Score(label: 'Mes anterior', value: formatMoney(total(lastMonth)), caption: '${lastMonth.length} pagos'),
+            ],
+          ),
           const SizedBox(height: 28),
         ],
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            FilterChip(
+              label: Text('Por verificar  ${(payments.value ?? const <Payment>[]).where(_pendingVerification).length}'),
+              selected: _onlyPending,
+              onSelected: (v) => setState(() => _onlyPending = v),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
         Panel(
           title: 'Asientos',
           padding: EdgeInsets.zero,
           child: AsyncView(
             payments,
             onRetry: () => ref.invalidate(paymentsProvider),
-            data: (list) => list.isEmpty
-                ? const EmptyState(icon: Icons.receipt_long_outlined, title: 'Sin pagos registrados')
-                : LayoutBuilder(
-                    builder: (context, c) => Column(
-                      children: [
-                        if (c.maxWidth >= 760)
-                          const TableHeader(
-                            cells: [('Fecha', 3), ('Cliente', 5), ('Plan', 3), ('Periodo', 4), ('Método', 3), ('Monto', 2), ('', 1)],
-                          ),
-                        for (final p in list) _PaymentRow(payment: p, compact: c.maxWidth < 760),
-                      ],
-                    ),
-                  ),
+            data: (all) {
+              final list = _onlyPending ? all.where(_pendingVerification).toList() : all;
+              return list.isEmpty
+                  ? EmptyState(
+                      icon: _onlyPending ? Icons.verified_outlined : Icons.receipt_long_outlined,
+                      title: _onlyPending ? 'Todo verificado' : 'Sin pagos registrados',
+                    )
+                  : LayoutBuilder(
+                      builder: (context, c) => Column(
+                        children: [
+                          if (c.maxWidth >= 760)
+                            const TableHeader(
+                              cells: [('Fecha', 3), ('Cliente', 5), ('Plan', 3), ('Periodo', 4), ('Método', 3), ('Monto', 2), ('', 1)],
+                            ),
+                          for (final p in list) _PaymentRow(payment: p, compact: c.maxWidth < 760),
+                        ],
+                      ),
+                    );
+            },
           ),
         ),
       ],
@@ -105,15 +141,48 @@ class _PaymentRow extends ConsumerWidget {
     final amount = Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text(formatMoney(p.amountCents), textAlign: TextAlign.right, style: AppText.mono(size: 14, weight: FontWeight.w600).copyWith(decoration: strike)),
+        Text(
+          formatMoney(p.amountCents),
+          textAlign: TextAlign.right,
+          style: AppText.mono(size: 14, weight: FontWeight.w600).copyWith(decoration: strike),
+        ),
         if (p.amountVesCents != null)
-          Text(formatVes(p.amountVesCents!), textAlign: TextAlign.right, style: muted.copyWith(fontSize: 11, color: AppColors.plateBlue)),
+          Text(
+            formatVes(p.amountVesCents!),
+            textAlign: TextAlign.right,
+            style: muted.copyWith(fontSize: 11, color: AppColors.plateBlue),
+          ),
       ],
     );
     final voidButton = p.voided || !ref.watch(canProvider(Perm.paymentsVoid))
         ? const SizedBox(width: 40)
         : IconButton(tooltip: 'Anular pago', onPressed: () => _void(context, ref), icon: const Icon(Icons.block, size: 18));
-    final method = Text(p.voided ? 'ANULADO' : p.methodName, style: muted.copyWith(color: p.voided ? AppColors.danger : null));
+    void openProof() => showProofDetail(
+      context,
+      kind: ProofKind.payment,
+      id: p.id,
+      proof: p.proof,
+      title: '${p.memberName} · ${p.planName}',
+      amountLabel: p.amountVesCents == null ? formatMoney(p.amountCents) : formatVes(p.amountVesCents!),
+      methodName: p.methodName,
+      createdBy: p.createdBy,
+      voided: p.voided,
+    );
+    final hasProof = p.proof != null;
+    final method = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(p.voided ? 'ANULADO' : p.methodName, style: muted.copyWith(color: p.voided ? AppColors.danger : null)),
+        if (p.proof?.reference != null)
+          Text('ref. ${p.proof!.reference}', style: muted.copyWith(fontSize: 11), overflow: TextOverflow.ellipsis),
+        if (hasProof && !p.voided)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: ProofBadge(proof: p.proof),
+          ),
+      ],
+    );
 
     final Widget row;
     if (compact) {
@@ -126,15 +195,32 @@ class _PaymentRow extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(p.memberName, style: TextStyle(fontWeight: FontWeight.w600, decoration: strike), overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 2),
-                  Text('${p.planName} · ${formatShortDate(p.periodStart)} – ${formatShortDate(p.periodEnd)}', style: muted, overflow: TextOverflow.ellipsis),
+                  Text(
+                    p.memberName,
+                    style: TextStyle(fontWeight: FontWeight.w600, decoration: strike),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 2),
                   Text(
-                    '${formatShortDate(p.paidAt)} ${formatTime(p.paidAt)} · ${p.voided ? 'ANULADO' : p.methodName}',
+                    '${p.planName} · ${formatShortDate(p.periodStart)} – ${formatShortDate(p.periodEnd)}',
+                    style: muted,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      '${formatShortDate(p.paidAt)} ${formatTime(p.paidAt)}',
+                      p.voided ? 'ANULADO' : p.methodName,
+                      if (p.proof?.reference != null) 'ref. ${p.proof!.reference}',
+                    ].join(' · '),
                     style: muted.copyWith(color: p.voided ? AppColors.danger : null),
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (hasProof && !p.voided)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: ProofBadge(proof: p.proof),
+                    ),
                 ],
               ),
             ),
@@ -153,18 +239,28 @@ class _PaymentRow extends ConsumerWidget {
             Expanded(flex: 3, child: Text('${formatShortDate(p.paidAt)} · ${formatTime(p.paidAt)}', style: muted)),
             Expanded(
               flex: 5,
-              child: Text(p.memberName, style: TextStyle(fontWeight: FontWeight.w600, decoration: strike), overflow: TextOverflow.ellipsis),
+              child: Text(
+                p.memberName,
+                style: TextStyle(fontWeight: FontWeight.w600, decoration: strike),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             Expanded(flex: 3, child: Text(p.planName, style: const TextStyle(fontSize: 14))),
             Expanded(flex: 4, child: Text('${formatShortDate(p.periodStart)} – ${formatShortDate(p.periodEnd)}', style: muted)),
             Expanded(flex: 3, child: method),
             Expanded(flex: 2, child: amount),
-            Expanded(flex: 1, child: Align(alignment: Alignment.centerRight, child: voidButton)),
+            Expanded(
+              flex: 1,
+              child: Align(alignment: Alignment.centerRight, child: voidButton),
+            ),
           ],
         ),
       );
     }
-    final faded = Opacity(opacity: p.voided ? .55 : 1, child: row);
+    final faded = Opacity(
+      opacity: p.voided ? .55 : 1,
+      child: hasProof ? InkWell(onTap: openProof, child: row) : row,
+    );
     return p.voided ? Tooltip(message: 'Anulado: ${p.voidReason}', child: faded) : faded;
   }
 }

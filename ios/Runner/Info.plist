@@ -19,9 +19,9 @@
 	<!-- Hecho por Briann$ Workers Corp. Sin estos textos iOS cierra la app al
 	     abrir la cámara o la galería para la foto del cliente. -->
 	<key>NSCameraUsageDescription</key>
-	<string>Workers Gym usa la cámara para tomar la foto de perfil del cliente.</string>
+	<string>Workers Gym usa la cámara para la foto del cliente, la foto de los comprobantes de pago y para escanear códigos de productos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Workers Gym usa tus fotos para elegir la foto de perfil del cliente.</string>
+	<string>Workers Gym usa tus fotos para elegir la foto del cliente o del comprobante de pago.</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

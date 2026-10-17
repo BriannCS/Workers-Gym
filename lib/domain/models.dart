@@ -16,6 +16,7 @@ enum MembershipStatus {
   expiringSoon('Por vencer'),
   expired('Vencido'),
   none('Sin plan'),
+
   /// Marcado a mano por recepción (dejó de venir). No cuenta en los avisos de
   /// vencimiento; si vuelve a pagar se reactiva solo.
   inactive('Inactivo');
@@ -26,8 +27,7 @@ enum MembershipStatus {
 
 /// Días que faltan para [expiresOn] (último día válido, inclusive).
 /// 0 = vence hoy, negativo = ya venció.
-int daysLeft(DateTime expiresOn, DateTime today) =>
-    dateOnly(expiresOn).difference(dateOnly(today)).inDays;
+int daysLeft(DateTime expiresOn, DateTime today) => dateOnly(expiresOn).difference(dateOnly(today)).inDays;
 
 MembershipStatus membershipStatus(DateTime? expiresOn, DateTime today) {
   if (expiresOn == null) return MembershipStatus.none;
@@ -40,11 +40,7 @@ MembershipStatus membershipStatus(DateTime? expiresOn, DateTime today) {
 /// Periodo que cubre un pago nuevo. Si la membresía sigue vigente, el nuevo
 /// periodo empieza al día siguiente del vencimiento (no se pierden días);
 /// si ya venció o no existe, empieza hoy.
-({DateTime start, DateTime end}) renewalPeriod({
-  required DateTime? currentExpiresOn,
-  required DateTime today,
-  required int durationDays,
-}) {
+({DateTime start, DateTime end}) renewalPeriod({required DateTime? currentExpiresOn, required DateTime today, required int durationDays}) {
   final t = dateOnly(today);
   final start = currentExpiresOn != null && !dateOnly(currentExpiresOn).isBefore(t)
       ? dateOnly(currentExpiresOn).add(const Duration(days: 1))
@@ -93,6 +89,7 @@ class PaymentMethod {
     required this.currency,
     this.active = true,
     this.position = 0,
+    this.requiresReference = false,
   });
 
   final String code;
@@ -101,18 +98,29 @@ class PaymentMethod {
   final bool active;
   final int position;
 
+  /// Pago móvil, transferencia, Zelle…: al cobrar se pide la referencia (y
+  /// se puede adjuntar la foto del comprobante).
+  final bool requiresReference;
+
   bool get inBolivares => currency == Currency.ves;
 
   factory PaymentMethod.fromJson(Map<String, dynamic> j) => PaymentMethod(
-        code: j['code'] as String,
-        name: j['name'] as String,
-        currency: Currency.fromCode(j['currency'] as String?),
-        active: j['active'] as bool? ?? true,
-        position: j['position'] as int? ?? 0,
-      );
+    code: j['code'] as String,
+    name: j['name'] as String,
+    currency: Currency.fromCode(j['currency'] as String?),
+    active: j['active'] as bool? ?? true,
+    position: j['position'] as int? ?? 0,
+    requiresReference: j['requires_reference'] as bool? ?? false,
+  );
 
-  PaymentMethod copyWith({bool? active}) =>
-      PaymentMethod(code: code, name: name, currency: currency, active: active ?? this.active, position: position);
+  PaymentMethod copyWith({bool? active, bool? requiresReference}) => PaymentMethod(
+    code: code,
+    name: name,
+    currency: currency,
+    active: active ?? this.active,
+    position: position,
+    requiresReference: requiresReference ?? this.requiresReference,
+  );
 }
 
 /// Código estable para un método nuevo a partir de su nombre:
@@ -157,32 +165,23 @@ class GymSettings {
   final RateSource rateSource;
   final double? manualRate;
 
-  factory GymSettings.fromJson(Map<String, dynamic> j) => GymSettings(
-        rateSource: RateSource.fromCode(j['rate_source'] as String?),
-        manualRate: _num(j['manual_rate']),
-      );
+  factory GymSettings.fromJson(Map<String, dynamic> j) =>
+      GymSettings(rateSource: RateSource.fromCode(j['rate_source'] as String?), manualRate: _num(j['manual_rate']));
 
   Map<String, dynamic> toJson() => {'rate_source': rateSource.code, 'manual_rate': manualRate};
 }
 
 /// Tasa que aplica según los ajustes y las tasas consultadas. Null si no hay
 /// (sin conexión y sin tasa manual).
-ExchangeRate? effectiveRate(GymSettings settings, Map<RateSource, ExchangeRate> fetched) =>
-    settings.rateSource == RateSource.manual
-        ? (settings.manualRate == null ? null : ExchangeRate(RateSource.manual, settings.manualRate!))
-        : fetched[settings.rateSource];
+ExchangeRate? effectiveRate(GymSettings settings, Map<RateSource, ExchangeRate> fetched) => settings.rateSource == RateSource.manual
+    ? (settings.manualRate == null ? null : ExchangeRate(RateSource.manual, settings.manualRate!))
+    : fetched[settings.rateSource];
 
 // ---------------------------------------------------------------------------
 // Planes y clientes
 
 class Plan {
-  const Plan({
-    required this.id,
-    required this.name,
-    required this.priceCents,
-    required this.durationDays,
-    this.active = true,
-  });
+  const Plan({required this.id, required this.name, required this.priceCents, required this.durationDays, this.active = true});
 
   final String id;
   final String name;
@@ -191,33 +190,23 @@ class Plan {
   final bool active;
 
   factory Plan.fromJson(Map<String, dynamic> j) => Plan(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        priceCents: j['price_cents'] as int,
-        durationDays: j['duration_days'] as int,
-        active: j['active'] as bool? ?? true,
-      );
+    id: j['id'] as String,
+    name: j['name'] as String,
+    priceCents: j['price_cents'] as int,
+    durationDays: j['duration_days'] as int,
+    active: j['active'] as bool? ?? true,
+  );
 }
 
 class PlanInput {
-  const PlanInput({
-    required this.name,
-    required this.priceCents,
-    required this.durationDays,
-    this.active = true,
-  });
+  const PlanInput({required this.name, required this.priceCents, required this.durationDays, this.active = true});
 
   final String name;
   final int priceCents;
   final int durationDays;
   final bool active;
 
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'price_cents': priceCents,
-        'duration_days': durationDays,
-        'active': active,
-      };
+  Map<String, dynamic> toJson() => {'name': name, 'price_cents': priceCents, 'duration_days': durationDays, 'active': active};
 }
 
 /// Cliente con su último vencimiento ya resuelto (vista `member_overview`).
@@ -266,51 +255,39 @@ class Member {
     return digits.isNotEmpty && (onlyDigits(documentId).contains(digits) || onlyDigits(phone).contains(digits));
   }
 
-  MemberInput toInput() => MemberInput(
-        fullName: fullName,
-        documentId: documentId,
-        phone: phone,
-        email: email,
-        notes: notes,
-      );
+  MemberInput toInput() => MemberInput(fullName: fullName, documentId: documentId, phone: phone, email: email, notes: notes);
 
   factory Member.fromJson(Map<String, dynamic> j) => Member(
-        id: j['id'] as String,
-        fullName: j['full_name'] as String,
-        documentId: j['document_id'] as String?,
-        phone: j['phone'] as String?,
-        email: j['email'] as String?,
-        notes: j['notes'] as String?,
-        createdAt: DateTime.parse(j['created_at'] as String),
-        expiresOn: _date(j['expires_on']),
-        planName: j['plan_name'] as String?,
-        photoPath: j['photo_path'] as String?,
-        active: j['active'] as bool? ?? true,
-      );
+    id: j['id'] as String,
+    fullName: j['full_name'] as String,
+    documentId: j['document_id'] as String?,
+    phone: j['phone'] as String?,
+    email: j['email'] as String?,
+    notes: j['notes'] as String?,
+    createdAt: DateTime.parse(j['created_at'] as String),
+    expiresOn: _date(j['expires_on']),
+    planName: j['plan_name'] as String?,
+    photoPath: j['photo_path'] as String?,
+    active: j['active'] as bool? ?? true,
+  );
 
   Member copyWith({DateTime? expiresOn, String? planName, MemberInput? input, String? Function()? photoPath, bool? active}) => Member(
-        id: id,
-        createdAt: createdAt,
-        fullName: input?.fullName ?? fullName,
-        documentId: input != null ? input.documentId : documentId,
-        phone: input != null ? input.phone : phone,
-        email: input != null ? input.email : email,
-        notes: input != null ? input.notes : notes,
-        expiresOn: expiresOn ?? this.expiresOn,
-        planName: planName ?? this.planName,
-        photoPath: photoPath != null ? photoPath() : this.photoPath,
-        active: active ?? this.active,
-      );
+    id: id,
+    createdAt: createdAt,
+    fullName: input?.fullName ?? fullName,
+    documentId: input != null ? input.documentId : documentId,
+    phone: input != null ? input.phone : phone,
+    email: input != null ? input.email : email,
+    notes: input != null ? input.notes : notes,
+    expiresOn: expiresOn ?? this.expiresOn,
+    planName: planName ?? this.planName,
+    photoPath: photoPath != null ? photoPath() : this.photoPath,
+    active: active ?? this.active,
+  );
 }
 
 class MemberInput {
-  const MemberInput({
-    required this.fullName,
-    this.documentId,
-    this.phone,
-    this.email,
-    this.notes,
-  });
+  const MemberInput({required this.fullName, this.documentId, this.phone, this.email, this.notes});
 
   final String fullName;
   final String? documentId;
@@ -318,17 +295,118 @@ class MemberInput {
   final String? email;
   final String? notes;
 
-  Map<String, dynamic> toJson() => {
-        'full_name': fullName,
-        'document_id': documentId,
-        'phone': phone,
-        'email': email,
-        'notes': notes,
-      };
+  Map<String, dynamic> toJson() => {'full_name': fullName, 'document_id': documentId, 'phone': phone, 'email': email, 'notes': notes};
 }
 
 // ---------------------------------------------------------------------------
 // Pagos de membresía
+
+/// Cobro de membresía (`payment`) o venta de la tienda (`sale`).
+enum ProofKind {
+  payment('payment', 'payments'),
+  sale('sale', 'sales');
+
+  const ProofKind(this.code, this.folder);
+  final String code;
+
+  /// Carpeta del bucket `payment-receipts`.
+  final String folder;
+}
+
+/// Datos del pago que hizo el cliente (pago móvil, transferencia…): referencia,
+/// banco y quién pagó; la foto del comprobante y si ya se verificó.
+class PaymentProof {
+  const PaymentProof({this.reference, this.payerBank, this.payerId, this.receiptPath, this.verifiedAt});
+
+  final String? reference;
+  final String? payerBank;
+  final String? payerId;
+  final String? receiptPath;
+  final DateTime? verifiedAt;
+
+  bool get verified => verifiedAt != null;
+  bool get hasReceipt => receiptPath != null;
+  bool get isEmpty => reference == null && payerBank == null && payerId == null && receiptPath == null;
+
+  static PaymentProof? fromJson(Map<String, dynamic> j) {
+    final p = PaymentProof(
+      reference: j['reference'] as String?,
+      payerBank: j['payer_bank'] as String?,
+      payerId: j['payer_id'] as String?,
+      receiptPath: j['receipt_path'] as String?,
+      verifiedAt: _timestamp(j['verified_at']),
+    );
+    return p.isEmpty && p.verifiedAt == null ? null : p;
+  }
+
+  PaymentProof copyWith({String? Function()? receiptPath, DateTime? Function()? verifiedAt}) => PaymentProof(
+    reference: reference,
+    payerBank: payerBank,
+    payerId: payerId,
+    receiptPath: receiptPath == null ? this.receiptPath : receiptPath(),
+    verifiedAt: verifiedAt == null ? this.verifiedAt : verifiedAt(),
+  );
+}
+
+/// Lo que se escribe al cobrar: referencia, banco y cédula/teléfono de quien
+/// pagó. La foto se sube aparte, después de registrar el cobro.
+class ProofInput {
+  const ProofInput({this.reference, this.payerBank, this.payerId});
+
+  final String? reference;
+  final String? payerBank;
+  final String? payerId;
+
+  static String? _clean(String? s) {
+    final t = (s ?? '').trim();
+    return t.isEmpty ? null : t;
+  }
+
+  /// Referencia sin espacios (como la guarda el servidor).
+  String? get cleanReference {
+    final r = _clean(reference)?.replaceAll(RegExp(r'\s+'), '');
+    return r == null || r.isEmpty ? null : r;
+  }
+
+  String? get cleanBank => _clean(payerBank);
+  String? get cleanPayerId => _clean(payerId);
+
+  /// Mensaje de error, o null si sirve para [method].
+  String? problemFor(PaymentMethod method) {
+    final r = cleanReference;
+    if (method.requiresReference && r == null) return 'Escribe el número de referencia del pago';
+    if (r != null && (r.length < 3 || r.length > 40)) return 'La referencia debe tener entre 3 y 40 caracteres';
+    return null;
+  }
+
+  Map<String, dynamic> toRpc() => {'p_reference': cleanReference, 'p_payer_bank': cleanBank, 'p_payer_id': cleanPayerId};
+}
+
+/// Bancos venezolanos más usados para pago móvil y transferencias.
+const venezuelanBanks = [
+  'Banco de Venezuela',
+  'Banesco',
+  'Mercantil',
+  'BBVA Provincial',
+  'Bancamiga',
+  'BNC',
+  'Banco del Tesoro',
+  'Bicentenario',
+  'Bancaribe',
+  'Banco Exterior',
+  'Banco Plaza',
+  'Banplus',
+  'Venezolano de Crédito',
+  'Banco Activo',
+  'Sofitasa',
+  'Banfanb',
+  '100% Banco',
+  'Banco Caroní',
+  'Del Sur',
+  'BFC Fondo Común',
+  'Mi Banco',
+  'R4',
+];
 
 class Payment {
   const Payment({
@@ -350,6 +428,7 @@ class Payment {
     this.voidedAt,
     this.voidReason,
     this.createdBy,
+    this.proof,
   });
 
   final String id;
@@ -377,50 +456,59 @@ class Payment {
   /// Quién cobró (id del personal).
   final String? createdBy;
 
+  /// Referencia, comprobante y verificación (null = sin datos).
+  final PaymentProof? proof;
+
   bool get voided => voidedAt != null;
 
   /// Espera `members(full_name)`, `plans(name)` y `payment_methods(name)`.
   factory Payment.fromJson(Map<String, dynamic> j) => Payment(
-        id: j['id'] as String,
-        memberId: j['member_id'] as String,
-        memberName: (j['members'] as Map?)?['full_name'] as String? ?? '—',
-        planId: j['plan_id'] as String,
-        planName: (j['plans'] as Map?)?['name'] as String? ?? '—',
-        amountCents: j['amount_cents'] as int,
-        methodCode: j['method'] as String,
-        methodName: (j['payment_methods'] as Map?)?['name'] as String? ?? j['method'] as String,
-        periodStart: _date(j['period_start'])!,
-        periodEnd: _date(j['period_end'])!,
-        paidAt: _timestamp(j['paid_at'])!,
-        currency: Currency.fromCode(j['currency'] as String?),
-        rate: _num(j['rate']),
-        rateSource: j['rate_source'] == null ? null : RateSource.fromCode(j['rate_source'] as String),
-        amountVesCents: _int(j['amount_ves_cents']),
-        voidedAt: _timestamp(j['voided_at']),
-        voidReason: j['void_reason'] as String?,
-        createdBy: j['created_by'] as String?,
-      );
+    id: j['id'] as String,
+    memberId: j['member_id'] as String,
+    memberName: (j['members'] as Map?)?['full_name'] as String? ?? '—',
+    planId: j['plan_id'] as String,
+    planName: (j['plans'] as Map?)?['name'] as String? ?? '—',
+    amountCents: j['amount_cents'] as int,
+    methodCode: j['method'] as String,
+    methodName: (j['payment_methods'] as Map?)?['name'] as String? ?? j['method'] as String,
+    periodStart: _date(j['period_start'])!,
+    periodEnd: _date(j['period_end'])!,
+    paidAt: _timestamp(j['paid_at'])!,
+    currency: Currency.fromCode(j['currency'] as String?),
+    rate: _num(j['rate']),
+    rateSource: j['rate_source'] == null ? null : RateSource.fromCode(j['rate_source'] as String),
+    amountVesCents: _int(j['amount_ves_cents']),
+    voidedAt: _timestamp(j['voided_at']),
+    voidReason: j['void_reason'] as String?,
+    createdBy: j['created_by'] as String?,
+    proof: PaymentProof.fromJson(j),
+  );
 
-  Payment voidedWith(String reason, DateTime at) => Payment(
-        id: id,
-        memberId: memberId,
-        memberName: memberName,
-        planId: planId,
-        planName: planName,
-        amountCents: amountCents,
-        methodCode: methodCode,
-        methodName: methodName,
-        periodStart: periodStart,
-        periodEnd: periodEnd,
-        paidAt: paidAt,
-        currency: currency,
-        rate: rate,
-        rateSource: rateSource,
-        amountVesCents: amountVesCents,
-        voidedAt: at,
-        voidReason: reason,
-        createdBy: createdBy,
-      );
+  Payment withProof(PaymentProof? proof) => _copy(proof: proof);
+
+  Payment voidedWith(String reason, DateTime at) => _copy(voidedAt: at, voidReason: reason);
+
+  Payment _copy({PaymentProof? proof, DateTime? voidedAt, String? voidReason}) => Payment(
+    id: id,
+    memberId: memberId,
+    memberName: memberName,
+    planId: planId,
+    planName: planName,
+    amountCents: amountCents,
+    methodCode: methodCode,
+    methodName: methodName,
+    periodStart: periodStart,
+    periodEnd: periodEnd,
+    paidAt: paidAt,
+    currency: currency,
+    rate: rate,
+    rateSource: rateSource,
+    amountVesCents: amountVesCents,
+    voidedAt: voidedAt ?? this.voidedAt,
+    voidReason: voidReason ?? this.voidReason,
+    createdBy: createdBy,
+    proof: proof ?? this.proof,
+  );
 }
 
 /// Cobro de membresía a registrar. El periodo calculado aquí es la vista
@@ -435,6 +523,7 @@ class NewPayment {
     required this.periodStart,
     required this.periodEnd,
     this.rate,
+    this.proof = const ProofInput(),
   });
 
   factory NewPayment.renewal({
@@ -443,12 +532,9 @@ class NewPayment {
     required PaymentMethod method,
     required DateTime today,
     ExchangeRate? rate,
+    ProofInput proof = const ProofInput(),
   }) {
-    final period = renewalPeriod(
-      currentExpiresOn: member.expiresOn,
-      today: today,
-      durationDays: plan.durationDays,
-    );
+    final period = renewalPeriod(currentExpiresOn: member.expiresOn, today: today, durationDays: plan.durationDays);
     return NewPayment(
       member: member,
       plan: plan,
@@ -457,6 +543,7 @@ class NewPayment {
       periodStart: period.start,
       periodEnd: period.end,
       rate: method.inBolivares ? rate : null,
+      proof: proof,
     );
   }
 
@@ -472,11 +559,15 @@ class NewPayment {
   /// Tasa usada si el método es en bolívares.
   final ExchangeRate? rate;
 
+  /// Referencia y datos de quien pagó (pago móvil, transferencia…).
+  final ProofInput proof;
+
   int get amountCents => plan.priceCents;
   int? get amountVesCents => rate?.vesCents(amountCents);
 
-  /// Un cobro en Bs. sin tasa no se puede registrar.
-  bool get ready => !method.inBolivares || rate != null;
+  /// Un cobro en Bs. sin tasa, o sin la referencia que pide el método, no se
+  /// puede registrar.
+  bool get ready => (!method.inBolivares || rate != null) && proof.problemFor(method) == null;
 }
 
 // ---------------------------------------------------------------------------
@@ -500,12 +591,12 @@ class Attendance {
   final CheckInMethod method;
 
   factory Attendance.fromJson(Map<String, dynamic> j) => Attendance(
-        id: j['id'] as String,
-        memberId: j['member_id'] as String,
-        memberName: (j['members'] as Map?)?['full_name'] as String? ?? '—',
-        checkedInAt: DateTime.parse(j['checked_in_at'] as String).toLocal(),
-        method: CheckInMethod.values.byName(j['method'] as String),
-      );
+    id: j['id'] as String,
+    memberId: j['member_id'] as String,
+    memberName: (j['members'] as Map?)?['full_name'] as String? ?? '—',
+    checkedInAt: DateTime.parse(j['checked_in_at'] as String).toLocal(),
+    method: CheckInMethod.values.byName(j['method'] as String),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -521,12 +612,12 @@ class Supplier {
   final String? notes;
 
   factory Supplier.fromJson(Map<String, dynamic> j) => Supplier(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        phone: j['phone'] as String?,
-        email: j['email'] as String?,
-        notes: j['notes'] as String?,
-      );
+    id: j['id'] as String,
+    name: j['name'] as String,
+    phone: j['phone'] as String?,
+    email: j['email'] as String?,
+    notes: j['notes'] as String?,
+  );
 }
 
 class SupplierInput {
@@ -573,30 +664,30 @@ class Product {
 
   /// Espera la relación embebida `suppliers(name)`.
   factory Product.fromJson(Map<String, dynamic> j) => Product(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        sku: j['sku'] as String?,
-        priceCents: j['price_cents'] as int,
-        costCents: j['cost_cents'] as int?,
-        stock: j['stock'] as int,
-        minStock: j['min_stock'] as int,
-        supplierId: j['supplier_id'] as String?,
-        supplierName: (j['suppliers'] as Map?)?['name'] as String?,
-        active: j['active'] as bool,
-      );
+    id: j['id'] as String,
+    name: j['name'] as String,
+    sku: j['sku'] as String?,
+    priceCents: j['price_cents'] as int,
+    costCents: j['cost_cents'] as int?,
+    stock: j['stock'] as int,
+    minStock: j['min_stock'] as int,
+    supplierId: j['supplier_id'] as String?,
+    supplierName: (j['suppliers'] as Map?)?['name'] as String?,
+    active: j['active'] as bool,
+  );
 
   Product withStock(int stock, {int? costCents}) => Product(
-        id: id,
-        name: name,
-        sku: sku,
-        priceCents: priceCents,
-        costCents: costCents ?? this.costCents,
-        stock: stock,
-        minStock: minStock,
-        supplierId: supplierId,
-        supplierName: supplierName,
-        active: active,
-      );
+    id: id,
+    name: name,
+    sku: sku,
+    priceCents: priceCents,
+    costCents: costCents ?? this.costCents,
+    stock: stock,
+    minStock: minStock,
+    supplierId: supplierId,
+    supplierName: supplierName,
+    active: active,
+  );
 }
 
 /// Datos editables de un producto. El stock no está aquí: solo cambia con
@@ -623,14 +714,14 @@ class ProductInput {
   final bool active;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'sku': sku,
-        'price_cents': priceCents,
-        if (costCents != null) 'cost_cents': costCents,
-        'min_stock': minStock,
-        'supplier_id': supplierId,
-        'active': active,
-      };
+    'name': name,
+    'sku': sku,
+    'price_cents': priceCents,
+    if (costCents != null) 'cost_cents': costCents,
+    'min_stock': minStock,
+    'supplier_id': supplierId,
+    'active': active,
+  };
 }
 
 class CartLine {
@@ -655,11 +746,11 @@ class SaleItem {
   int get totalCents => quantity * unitPriceCents;
 
   factory SaleItem.fromJson(Map<String, dynamic> j) => SaleItem(
-        productId: j['product_id'] as String,
-        productName: (j['products'] as Map?)?['name'] as String? ?? '—',
-        quantity: j['quantity'] as int,
-        unitPriceCents: j['unit_price_cents'] as int,
-      );
+    productId: j['product_id'] as String,
+    productName: (j['products'] as Map?)?['name'] as String? ?? '—',
+    quantity: j['quantity'] as int,
+    unitPriceCents: j['unit_price_cents'] as int,
+  );
 }
 
 class Sale {
@@ -679,6 +770,7 @@ class Sale {
     this.voidedAt,
     this.voidReason,
     this.createdBy,
+    this.proof,
   });
 
   final String id;
@@ -699,6 +791,9 @@ class Sale {
   /// Quién vendió (id del personal).
   final String? createdBy;
 
+  /// Referencia, comprobante y verificación (null = sin datos).
+  final PaymentProof? proof;
+
   bool get voided => voidedAt != null;
 
   String get description => items.map((i) => i.quantity == 1 ? i.productName : '${i.quantity}× ${i.productName}').join(', ');
@@ -706,40 +801,46 @@ class Sale {
   /// Espera `members(full_name)`, `payment_methods(name)` y
   /// `sale_items(*, products(name))`.
   factory Sale.fromJson(Map<String, dynamic> j) => Sale(
-        id: j['id'] as String,
-        memberId: j['member_id'] as String?,
-        memberName: (j['members'] as Map?)?['full_name'] as String?,
-        methodCode: j['method'] as String,
-        methodName: (j['payment_methods'] as Map?)?['name'] as String? ?? j['method'] as String,
-        totalCents: j['total_cents'] as int,
-        soldAt: _timestamp(j['sold_at'])!,
-        items: [for (final i in (j['sale_items'] as List? ?? const [])) SaleItem.fromJson(i as Map<String, dynamic>)],
-        currency: Currency.fromCode(j['currency'] as String?),
-        rate: _num(j['rate']),
-        rateSource: j['rate_source'] == null ? null : RateSource.fromCode(j['rate_source'] as String),
-        totalVesCents: _int(j['total_ves_cents']),
-        voidedAt: _timestamp(j['voided_at']),
-        voidReason: j['void_reason'] as String?,
-        createdBy: j['created_by'] as String?,
-      );
+    id: j['id'] as String,
+    memberId: j['member_id'] as String?,
+    memberName: (j['members'] as Map?)?['full_name'] as String?,
+    methodCode: j['method'] as String,
+    methodName: (j['payment_methods'] as Map?)?['name'] as String? ?? j['method'] as String,
+    totalCents: j['total_cents'] as int,
+    soldAt: _timestamp(j['sold_at'])!,
+    items: [for (final i in (j['sale_items'] as List? ?? const [])) SaleItem.fromJson(i as Map<String, dynamic>)],
+    currency: Currency.fromCode(j['currency'] as String?),
+    rate: _num(j['rate']),
+    rateSource: j['rate_source'] == null ? null : RateSource.fromCode(j['rate_source'] as String),
+    totalVesCents: _int(j['total_ves_cents']),
+    voidedAt: _timestamp(j['voided_at']),
+    voidReason: j['void_reason'] as String?,
+    createdBy: j['created_by'] as String?,
+    proof: PaymentProof.fromJson(j),
+  );
 
-  Sale voidedWith(String reason, DateTime at) => Sale(
-        id: id,
-        memberId: memberId,
-        memberName: memberName,
-        methodCode: methodCode,
-        methodName: methodName,
-        totalCents: totalCents,
-        soldAt: soldAt,
-        items: items,
-        currency: currency,
-        rate: rate,
-        rateSource: rateSource,
-        totalVesCents: totalVesCents,
-        voidedAt: at,
-        voidReason: reason,
-        createdBy: createdBy,
-      );
+  Sale withProof(PaymentProof? proof) => _copy(proof: proof);
+
+  Sale voidedWith(String reason, DateTime at) => _copy(voidedAt: at, voidReason: reason);
+
+  Sale _copy({PaymentProof? proof, DateTime? voidedAt, String? voidReason}) => Sale(
+    id: id,
+    memberId: memberId,
+    memberName: memberName,
+    methodCode: methodCode,
+    methodName: methodName,
+    totalCents: totalCents,
+    soldAt: soldAt,
+    items: items,
+    currency: currency,
+    rate: rate,
+    rateSource: rateSource,
+    totalVesCents: totalVesCents,
+    voidedAt: voidedAt ?? this.voidedAt,
+    voidReason: voidReason ?? this.voidReason,
+    createdBy: createdBy,
+    proof: proof ?? this.proof,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -756,11 +857,11 @@ class PurchaseItem {
   int get totalCents => quantity * unitCostCents;
 
   factory PurchaseItem.fromJson(Map<String, dynamic> j) => PurchaseItem(
-        productId: j['product_id'] as String,
-        productName: (j['products'] as Map?)?['name'] as String? ?? '—',
-        quantity: j['quantity'] as int,
-        unitCostCents: j['unit_cost_cents'] as int,
-      );
+    productId: j['product_id'] as String,
+    productName: (j['products'] as Map?)?['name'] as String? ?? '—',
+    quantity: j['quantity'] as int,
+    unitCostCents: j['unit_cost_cents'] as int,
+  );
 }
 
 class Purchase {
@@ -776,6 +877,13 @@ class Purchase {
     this.notes,
     this.voidedAt,
     this.voidReason,
+    this.methodCode,
+    this.methodName,
+    this.currency = Currency.usd,
+    this.rate,
+    this.rateSource,
+    this.totalVesCents,
+    this.paymentReference,
   });
 
   final String id;
@@ -790,37 +898,62 @@ class Purchase {
   final DateTime? voidedAt;
   final String? voidReason;
 
+  /// Con qué se le pagó al proveedor (null en compras anteriores a este dato).
+  final String? methodCode;
+  final String? methodName;
+  final Currency currency;
+  final double? rate;
+  final RateSource? rateSource;
+
+  /// Lo que salió en bolívares, si se pagó en Bs.
+  final int? totalVesCents;
+  final String? paymentReference;
+
   bool get voided => voidedAt != null;
   int get units => items.fold(0, (s, i) => s + i.quantity);
 
-  /// Espera `suppliers(name)` y `purchase_items(*, products(name))`.
+  /// Espera `suppliers(name)`, `payment_methods(name)` y `purchase_items(*, products(name))`.
   factory Purchase.fromJson(Map<String, dynamic> j) => Purchase(
-        id: j['id'] as String,
-        supplierId: j['supplier_id'] as String?,
-        supplierName: (j['suppliers'] as Map?)?['name'] as String?,
-        invoice: j['invoice'] as String?,
-        purchasedOn: _date(j['purchased_on'])!,
-        notes: j['notes'] as String?,
-        totalCents: j['total_cents'] as int,
-        items: [for (final i in (j['purchase_items'] as List? ?? const [])) PurchaseItem.fromJson(i as Map<String, dynamic>)],
-        createdAt: _timestamp(j['created_at'])!,
-        voidedAt: _timestamp(j['voided_at']),
-        voidReason: j['void_reason'] as String?,
-      );
+    id: j['id'] as String,
+    supplierId: j['supplier_id'] as String?,
+    supplierName: (j['suppliers'] as Map?)?['name'] as String?,
+    invoice: j['invoice'] as String?,
+    purchasedOn: _date(j['purchased_on'])!,
+    notes: j['notes'] as String?,
+    totalCents: j['total_cents'] as int,
+    items: [for (final i in (j['purchase_items'] as List? ?? const [])) PurchaseItem.fromJson(i as Map<String, dynamic>)],
+    createdAt: _timestamp(j['created_at'])!,
+    voidedAt: _timestamp(j['voided_at']),
+    voidReason: j['void_reason'] as String?,
+    methodCode: j['method'] as String?,
+    methodName: (j['payment_methods'] as Map?)?['name'] as String? ?? j['method'] as String?,
+    currency: Currency.fromCode(j['currency'] as String?),
+    rate: _num(j['rate']),
+    rateSource: j['rate_source'] == null ? null : RateSource.fromCode(j['rate_source'] as String),
+    totalVesCents: _int(j['total_ves_cents']),
+    paymentReference: j['payment_reference'] as String?,
+  );
 
   Purchase voidedWith(String reason, DateTime at) => Purchase(
-        id: id,
-        supplierId: supplierId,
-        supplierName: supplierName,
-        invoice: invoice,
-        purchasedOn: purchasedOn,
-        notes: notes,
-        totalCents: totalCents,
-        items: items,
-        createdAt: createdAt,
-        voidedAt: at,
-        voidReason: reason,
-      );
+    id: id,
+    supplierId: supplierId,
+    supplierName: supplierName,
+    invoice: invoice,
+    purchasedOn: purchasedOn,
+    notes: notes,
+    totalCents: totalCents,
+    items: items,
+    createdAt: createdAt,
+    voidedAt: at,
+    voidReason: reason,
+    methodCode: methodCode,
+    methodName: methodName,
+    currency: currency,
+    rate: rate,
+    rateSource: rateSource,
+    totalVesCents: totalVesCents,
+    paymentReference: paymentReference,
+  );
 }
 
 class PurchaseLine {
@@ -834,7 +967,16 @@ class PurchaseLine {
 }
 
 class NewPurchase {
-  const NewPurchase({required this.lines, required this.purchasedOn, this.supplierId, this.invoice, this.notes});
+  const NewPurchase({
+    required this.lines,
+    required this.purchasedOn,
+    this.supplierId,
+    this.invoice,
+    this.notes,
+    this.method,
+    this.rate,
+    this.paymentReference,
+  });
 
   final List<PurchaseLine> lines;
   final DateTime purchasedOn;
@@ -842,7 +984,15 @@ class NewPurchase {
   final String? invoice;
   final String? notes;
 
+  /// Con qué se le pagó al proveedor.
+  final PaymentMethod? method;
+
+  /// Tasa del día si se pagó en bolívares.
+  final ExchangeRate? rate;
+  final String? paymentReference;
+
   int get totalCents => lines.fold(0, (s, l) => s + l.totalCents);
+  int? get totalVesCents => method != null && method!.inBolivares ? rate?.vesCents(totalCents) : null;
 }
 
 // ---------------------------------------------------------------------------

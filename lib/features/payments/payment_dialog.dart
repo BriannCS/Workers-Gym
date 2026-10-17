@@ -9,9 +9,12 @@ import '../../data/gym_repository.dart';
 import '../../data/rates.dart';
 import '../../domain/models.dart';
 import 'method_picker.dart';
+import 'proof_widgets.dart';
 
-Future<void> showPaymentDialog(BuildContext context, {Member? member}) =>
-    showDialog(context: context, builder: (_) => _PaymentDialog(initialMember: member));
+Future<void> showPaymentDialog(BuildContext context, {Member? member}) => showDialog(
+  context: context,
+  builder: (_) => _PaymentDialog(initialMember: member),
+);
 
 class _PaymentDialog extends ConsumerStatefulWidget {
   const _PaymentDialog({this.initialMember});
@@ -27,11 +30,32 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
   Plan? _plan;
   PaymentMethod? _method;
   bool _busy = false;
+  final _proof = ProofDraft();
+
+  @override
+  void initState() {
+    super.initState();
+    // El botón Cobrar se habilita al escribir la referencia.
+    _proof.addListener(_onProof);
+  }
+
+  void _onProof() => setState(() {});
+
+  @override
+  void dispose() {
+    _proof
+      ..removeListener(_onProof)
+      ..dispose();
+    super.dispose();
+  }
 
   Future<void> _save(NewPayment payment) async {
     setState(() => _busy = true);
     try {
       final saved = await ref.read(gymRepositoryProvider).addPayment(payment);
+      if (payment.method.requiresReference && mounted) {
+        await uploadDraftReceipt(context, ref, _proof, ProofKind.payment, saved.id);
+      }
       refreshGymData(ref);
       if (!mounted) return;
       Navigator.pop(context);
@@ -55,7 +79,7 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
     final rate = ref.watch(currentRateProvider).value;
     final payment = member == null || plan == null || method == null
         ? null
-        : NewPayment.renewal(member: member, plan: plan, method: method, today: today, rate: rate);
+        : NewPayment.renewal(member: member, plan: plan, method: method, today: today, rate: rate, proof: _proof.input);
 
     return FormDialog(
       title: 'Registrar pago',
@@ -109,14 +133,12 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
             Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: [
-                for (final p in plans)
-                  _PlanOption(plan: p, selected: p.id == plan?.id, onTap: () => setState(() => _plan = p)),
-              ],
+              children: [for (final p in plans) _PlanOption(plan: p, selected: p.id == plan?.id, onTap: () => setState(() => _plan = p))],
             ),
           const SizedBox(height: 20),
           const _Label('Método de pago'),
           MethodPicker(selected: method, onChanged: (m) => setState(() => _method = m)),
+          if (method != null) ProofFields(draft: _proof, method: method),
           if (payment != null) ...[
             const SizedBox(height: 20),
             Container(
@@ -158,9 +180,9 @@ class _Label extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text.toUpperCase(), style: AppText.label),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(text.toUpperCase(), style: AppText.label),
+  );
 }
 
 class _PlanOption extends StatelessWidget {
@@ -188,7 +210,11 @@ class _PlanOption extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(plan.name.toUpperCase(), style: AppText.label.copyWith(color: fg), overflow: TextOverflow.ellipsis),
+                Text(
+                  plan.name.toUpperCase(),
+                  style: AppText.label.copyWith(color: fg),
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 6),
                 Text(formatMoney(plan.priceCents), style: AppText.score(26, color: fg)),
                 Text(

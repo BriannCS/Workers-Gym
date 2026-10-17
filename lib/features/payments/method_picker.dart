@@ -72,41 +72,41 @@ class BolivarCharge extends ConsumerWidget {
       padding: const EdgeInsets.only(top: 6),
       child: switch (rate) {
         AsyncValue(value: final r?, hasValue: true) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              LeaderLine('Tasa ${r.source.label}', 'Bs. ${formatRate(r.value)}', color: AppColors.textMuted),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text('EN BOLÍVARES', style: AppText.label.copyWith(color: AppColors.ink)),
-                  const Spacer(),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(formatVes(r.vesCents(usdCents)), style: AppText.score(34, color: AppColors.plateBlue)),
-                    ),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            LeaderLine('Tasa ${r.source.label}', 'Bs. ${formatRate(r.value)}', color: AppColors.textMuted),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('EN BOLÍVARES', style: AppText.label.copyWith(color: AppColors.ink)),
+                const Spacer(),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(formatVes(r.vesCents(usdCents)), style: AppText.score(34, color: AppColors.plateBlue)),
                   ),
-                ],
-              ),
-            ],
-          ),
-        AsyncValue(hasValue: true) || AsyncError() => Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'No hay tasa disponible (sin conexión). Usa una tasa manual en Ajustes para cobrar en bolívares.',
-                  style: AppText.muted.copyWith(color: AppColors.danger),
                 ),
+              ],
+            ),
+          ],
+        ),
+        AsyncValue(hasValue: true) || AsyncError() => Row(
+          children: [
+            Expanded(
+              child: Text(
+                'No hay tasa disponible (sin conexión). Usa una tasa manual en Ajustes para cobrar en bolívares.',
+                style: AppText.muted.copyWith(color: AppColors.danger),
               ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).popUntil((r) => r.isFirst);
-                  context.go('/ajustes');
-                },
-                child: const Text('Ajustes'),
-              ),
-            ],
-          ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).popUntil((r) => r.isFirst);
+                context.go('/ajustes');
+              },
+              child: const Text('Ajustes'),
+            ),
+          ],
+        ),
         _ => Text('Consultando tasa del día…', style: AppText.mono(size: 12, color: AppColors.textMuted)),
       },
     );
@@ -114,5 +114,6 @@ class BolivarCharge extends ConsumerWidget {
 }
 
 /// Texto del botón de cobro según la moneda del método.
-String chargeLabel(int usdCents, PaymentMethod? method, ExchangeRate? rate) =>
-    method != null && method.inBolivares && rate != null ? 'Cobrar ${formatVes(rate.vesCents(usdCents))}' : 'Cobrar ${formatMoney(usdCents)}';
+String chargeLabel(int usdCents, PaymentMethod? method, ExchangeRate? rate) => method != null && method.inBolivares && rate != null
+    ? 'Cobrar ${formatVes(rate.vesCents(usdCents))}'
+    : 'Cobrar ${formatMoney(usdCents)}';
