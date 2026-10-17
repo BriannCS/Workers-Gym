@@ -194,7 +194,14 @@ abstract final class AppTheme {
         selectedColor: AppColors.ink,
         secondarySelectedColor: AppColors.ink,
         side: const BorderSide(color: AppColors.borderStrong),
-        labelStyle: const TextStyle(fontFamily: bodyFont, fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text),
+        // El color cambia con el estado: tinta normal, papel cuando el chip
+        // está marcado (fondo de tinta). Sin esto el texto marcado no se ve.
+        labelStyle: TextStyle(
+          fontFamily: bodyFont,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: WidgetStateColor.resolveWith((s) => s.contains(WidgetState.selected) ? AppColors.surface : AppColors.text),
+        ),
         secondaryLabelStyle: const TextStyle(fontFamily: bodyFont, fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.surface),
         checkmarkColor: AppColors.surface,
         shape: square,

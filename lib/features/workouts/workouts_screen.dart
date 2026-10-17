@@ -13,6 +13,7 @@ import '../../data/gym_repository.dart';
 import '../../domain/models.dart';
 import '../../domain/staff.dart';
 import '../../domain/workouts.dart';
+import 'body_map.dart';
 
 class WorkoutsScreen extends ConsumerStatefulWidget {
   const WorkoutsScreen({super.key});
@@ -236,6 +237,11 @@ class _WorkoutTile extends ConsumerWidget {
                 ],
               ),
             ),
+            if (log.bodyParts.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: BodyMap(height: 84, showLabels: false, colors: BodyMap.highlight(log.bodyParts, AppColors.plateBlue)),
+              ),
             if (log.effort != null) Padding(padding: const EdgeInsets.only(top: 4, left: 8), child: _EffortDots(log.effort!)),
             if (canEdit)
               IconButton(
@@ -367,6 +373,26 @@ class _Balance extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Center(
+                child: BodyMap(
+                  height: 230,
+                  colors: {
+                    for (final MapEntry(key: p, value: d) in since.entries)
+                      if (d != null) p: _daysColor(d),
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 14,
+                children: [
+                  _Legend(AppColors.success, '0–3 días'),
+                  _Legend(AppColors.warning, '4–7 días'),
+                  _Legend(AppColors.danger, '8+ días'),
+                  _Legend(AppColors.raised, 'sin registro'),
+                ],
+              ),
               for (final zone in [BodyZone.upper, BodyZone.core, BodyZone.lower]) ...[
                 Padding(
                   padding: const EdgeInsets.only(top: 8, bottom: 6),
@@ -393,13 +419,7 @@ class _BalanceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = days;
-    final color = d == null
-        ? AppColors.borderStrong
-        : d <= 3
-        ? AppColors.success
-        : d <= 7
-        ? AppColors.warning
-        : AppColors.danger;
+    final color = d == null ? AppColors.borderStrong : _daysColor(d);
     // Barra llena = recién trabajado; se vacía en 14 días.
     final fill = d == null ? 0.0 : (1 - d / 14).clamp(.06, 1.0);
     final label = d == null ? 'nunca' : (d == 0 ? 'hoy' : (d == 1 ? 'ayer' : 'hace $d d'));
@@ -635,6 +655,20 @@ class _WorkoutFormState extends ConsumerState<_WorkoutForm> {
             },
           ),
           section('Partes del cuerpo'),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: BodyMap(
+                height: 220,
+                colors: BodyMap.highlight(_parts, AppColors.plateBlue),
+                onTap: (p) => setState(() => _parts.contains(p) ? _parts.remove(p) : _parts.add(p)),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text('Toca el dibujo o elige abajo', textAlign: TextAlign.center, style: AppText.muted.copyWith(fontSize: 12)),
+          ),
           for (final zone in BodyZone.values) ...[
             Padding(
               padding: const EdgeInsets.only(bottom: 6, top: 2),
@@ -711,4 +745,30 @@ class _WorkoutFormState extends ConsumerState<_WorkoutForm> {
       ),
     );
   }
+}
+
+Color _daysColor(int d) => d <= 3 ? AppColors.success : (d <= 7 ? AppColors.warning : AppColors.danger);
+
+class _Legend extends StatelessWidget {
+  const _Legend(this.color, this.text);
+
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: AppColors.borderStrong, width: .8),
+        ),
+      ),
+      const SizedBox(width: 5),
+      Text(text, style: AppText.muted.copyWith(fontSize: 11.5)),
+    ],
+  );
 }

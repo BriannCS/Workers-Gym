@@ -13,7 +13,7 @@ DateTime dateOnly(DateTime d) => DateTime.utc(d.year, d.month, d.day);
 
 enum MembershipStatus {
   active('Al día'),
-  expiringSoon('Po1r vencer'),
+  expiringSoon('Por vencer'),
   expired('Vencido'),
   none('Sin plan'),
   /// Marcado a mano por recepción (dejó de venir). No cuenta en los avisos de
